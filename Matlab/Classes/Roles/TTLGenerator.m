@@ -2,6 +2,10 @@ classdef TTLGenerator < TimeBasedSignalGenerator
     %TTLGEN A ttl generation class (abstract) that allows for the creation
     % of TTL signals vs time.
     
+    % NOTE!! ---------------------------
+    % Requires the abstract method compileSequence(obj,t,data)
+    % ----------------------------------
+    
     properties (Access = protected)
         % the collection of timed ttl values with zeros and ones.
         timedTTL=[];
@@ -31,9 +35,14 @@ classdef TTLGenerator < TimeBasedSignalGenerator
             if(~exist('t','var'))
                 t=(1:length(v))*obj.getTimeBase();
             end
-            obj.timedTTL(lttl+1:lttl+length(t),1)=t;
-            obj.timedTTL(lttl+1:lttl+length(t),2)=v;
-            obj.InvalidatedData();
+            if(length(t)==1)
+                % append and wait for t.
+                obj.appendSequence(t,v,t);
+            else
+                data=struct('t',t,'v',v);
+                waitFor=sum(t);
+                obj.appendSequence(t,data,waitFor);
+            end
         end
         
         % Set the values to be up for period t.
@@ -57,15 +66,31 @@ classdef TTLGenerator < TimeBasedSignalGenerator
             obj.Down(tdown);
         end
         
-        % clear the timed ttl.
-        function Clear(obj)
-            obj.timedTTL=[];
-            obj.InvalidatedData();
-        end
-        
         %clear the data.
-        function [ttl]=GetTimedTTLData(obj)
-            ttl= obj.timedTTL;
+        function [ttl]=getTimbaseTTLData(obj)
+            ttl= this.compile();
+        end
+    end
+    
+    % compilation methods.
+    methods(Access = protected)
+        function [t,bvals]=makeTTLTimedVectors(obj,t,data)
+            bvals=[];
+            t=[];
+            for i=1:length(t)
+                % timestamp.
+                if(isstruct(data))
+                    idata=data{i};
+                    it=t+idata.t; % timestamps;
+                    t(end+1:end+length(it))=it;
+                    bvals(end+1:end+length(it))=idata.data;
+                else
+                    t(end+1)=t;
+                    bvals(end+1)=data{i};
+                end
+            end
+            [t,sidx]=sort(t);
+            bvals=bvals(sidx);
         end
     end
 end

@@ -11,13 +11,11 @@ classdef NI6321TTLGenerator < NI6321Core & TTLGenerator
     
     properties
         ttlchan='port0/line1';
-        keepLastSequenceInMemory=1;
         niTTLChan=[];
     end
     
     properties (Access = protected)
-        lastSequenceData=[];
-        lastPrepared=-1;
+        preparedSequence=[];
     end
     
     % device functions.
@@ -33,47 +31,35 @@ classdef NI6321TTLGenerator < NI6321Core & TTLGenerator
         end
         
         function prepare(obj)
+            % in base class:
             % stop any execution.
-            % call base class.
+            % prepare device
             prepare@NI6321Core(obj);
-            s=obj.niSession;
             
-            % clear if needed.
-            if(~obj.keepLastSequenceInMemory)
-                obj.lastPrepared=-1;
-                obj.lastSequenceData=[];
-            end
-            
-            % preparing data.
-            data=[];
-            if(obj.hasChanged(obj.lastPrepared))
-                % interpolating data to the timebase.
-                tspan=min(obj.timedTTL(:,1)):obj.getTimebase():max(obj.timedTTL(:,1));
-                if(length(tspan)<2)
-                    data=obj.timedTTL(1,2);
-                else
-                    data=interp1(obj.timedTTL(:,1),obj.timedTTL(:,2),tspan,'nearest');
-                end
-                
-                if(obj.keepLastSequenceInMemory)
-                    obj.lastPrepared=now;
-                end
-            else
-                data=obj.lastSequenceData;
-            end
-            
-            % sending the data to the device.
-             obj.lastSequenceData=data;
+            % preparing the compilation data.
+            obj.preparedSequence=this.compile();
         end
         
         function run(obj)
+            if(isempty(obj.preparedSequence))return;end
             s=obj.niSession;
-            data=obj.lastSequenceData;
-            if(~obj.keepLastSequenceInMemory)
-                obj.lastPrepared=-1;
-                obj.lastSequenceData=[];
-            end
-            s.outputSingleScan(data);
+            s.outputSingleScan(obj.preparedSequence);
+        end
+    end
+    
+    % overriden abstract compilation
+    methods
+        function [rslt]=compileSequence(obj,t,data)
+            % making the compilation data vector.
+            [t,bvals]=obj.makeTTLTimedVectors(t,data);
+            
+            % removing duplicates.
+            [t,uidx]=unique(t);
+            bvals=bvals(uidx);
+            
+            % converting ttl timed data into timebase.
+            tspan=0:this.getTimebase():max(t);
+            rslt=interp1(t,bvals,tspan,'nearest');
         end
     end
 end

@@ -7,6 +7,7 @@ classdef Positioner2D < TimeBasedSignalGenerator
         % values to scaling values. 
         % Example: 
         positionScaling=1;
+        
         % the interpolation method to be used between the data
         % points. See interp1 for more info.
         interpolationMethod='linear';

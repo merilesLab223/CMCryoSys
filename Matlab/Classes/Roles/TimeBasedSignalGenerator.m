@@ -5,6 +5,7 @@ classdef TimeBasedSignalGenerator < TimeBasedObject
     properties
         % if true clear data after compile.
         clearDataAfterCompilation=false;
+        curT=0;
     end
     
     properties (Access = private)
@@ -17,6 +18,20 @@ classdef TimeBasedSignalGenerator < TimeBasedObject
         lastSorted=-1;
         
         lastCompilationResult=[];
+    end
+    
+    % time methods
+    methods
+        % call to change the current device time.
+        % can have negative values.
+        function wait(obj,t)
+            obj.curT=obj.cutT+t(1);
+        end
+        
+        % Call got go back in time.
+        function goBackInTime(obj,t)
+            obj.wait(-t);
+        end
     end
     
     % state methods
@@ -66,7 +81,14 @@ classdef TimeBasedSignalGenerator < TimeBasedObject
         end
         
         % append data to the execution chain.
-        function appendSequence(obj,t,data)
+        function appendSequence(obj,data,thenWait)
+            obj.insertSequence(obj.curT,data);
+            if(exist('thenWait','var'))
+                obj.wait(thenWait);
+            end
+        end
+        
+        function insertSequence(obj,t,data)
             obj.timestamps(end+1)=t;
             obj.data{end+1}=data;
             obj.Invalidate();
@@ -76,6 +98,7 @@ classdef TimeBasedSignalGenerator < TimeBasedObject
         function clear(obj)
             obj.timestamps=[];
             obj.data={};
+            obj.lastCompilationResult=[];
             obj.Invalidate();
         end
     end
@@ -84,9 +107,17 @@ classdef TimeBasedSignalGenerator < TimeBasedObject
     methods
         % compile the data to make an execuatbale result.
         function [rslt]=compile(obj)
-            if(~obj.validateTimestampChange('lastSorted'))return; end
+            if(~obj.validateTimestampChange('lastCompiled'))
+                rslt=obj.lastCompilationResult;
+                return; 
+            end
             obj.SortSequence();
             rslt=obj.compileSequence(obj.timestamps,obj.data);
+            if(obj.clearDataAfterCompilation)
+                this.Clear();
+            else
+                obj.lastCompilationResult=rslt;
+            end
         end
         
         % return the raw sequence for compilation.
@@ -94,6 +125,10 @@ classdef TimeBasedSignalGenerator < TimeBasedObject
             obj.SortSequence();
             t=obj.timestamps;
             data=obj.data;
+        end
+        
+        function [t,data]=getLastSequence(obj)
+            
         end
     end
     
