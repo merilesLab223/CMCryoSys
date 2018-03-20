@@ -5,7 +5,7 @@ classdef TimeBasedSignalGenerator < TimeBasedObject
     properties
         % if true clear data after compile.
         clearDataAfterCompilation=false;
-        curT=0;
+        
     end
     
     properties (Access = private)
@@ -19,20 +19,7 @@ classdef TimeBasedSignalGenerator < TimeBasedObject
         
         lastCompilationResult=[];
     end
-    
-    % time methods
-    methods
-        % call to change the current device time.
-        % can have negative values.
-        function wait(obj,t)
-            obj.curT=obj.cutT+t(1);
-        end
-        
-        % Call got go back in time.
-        function goBackInTime(obj,t)
-            obj.wait(-t);
-        end
-    end
+
     
     % state methods
     methods
@@ -45,7 +32,7 @@ classdef TimeBasedSignalGenerator < TimeBasedObject
         
         % Returns true(1) if the object is valid (has not changed) for the timestamp t. 
         function [rslt]=HasChanged(obj,t)
-            rslt=t>=obj.lastChanged;
+            rslt=t<=obj.lastChanged;
         end
         
         % returns true of the signal generator needs compilation.
@@ -96,6 +83,7 @@ classdef TimeBasedSignalGenerator < TimeBasedObject
         
         % Clear current data sequence.
         function clear(obj)
+            obj.curT=0;
             obj.timestamps=[];
             obj.data={};
             obj.lastCompilationResult=[];
@@ -125,10 +113,6 @@ classdef TimeBasedSignalGenerator < TimeBasedObject
             obj.SortSequence();
             t=obj.timestamps;
             data=obj.data;
-        end
-        
-        function [t,data]=getLastSequence(obj)
-            
         end
     end
     

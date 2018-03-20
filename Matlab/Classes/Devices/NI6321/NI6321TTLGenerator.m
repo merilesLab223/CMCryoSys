@@ -10,12 +10,20 @@ classdef NI6321TTLGenerator < NI6321Core & TTLGenerator
     end
     
     properties
-        ttlchan='port0/line1';
+        ttlchan='port0/line0';
+        clockAnalogInputChan='ai15';
         niTTLChan=[];
+        niTTLAnalogClockChan=[];
+        totalExecutionTime=0;
     end
     
     properties (Access = protected)
-        preparedSequence=[];
+    end
+    
+    methods (Access = protected)
+        function onDataReady(obj,s,e)
+            % do nothing with the data.
+        end
     end
     
     % device functions.
@@ -27,7 +35,12 @@ classdef NI6321TTLGenerator < NI6321Core & TTLGenerator
             
             % making the output channle/s.
             obj.niTTLChan=s.addDigitalChannel(obj.niDevID,obj.ttlchan,'OutputOnly');
-            %obj.biTTLAnalogClockChan=s.addAnalogInputChannel(obj.niDevID,'ai5','Voltage');
+            
+            % adding the clock if needed.
+            if(~obj.hasExternalClock())
+                s.addAnalogInputChannel(obj.niDevID,obj.clockAnalogInputChan,'Voltage');
+                s.addlistener('DataAvailable',@(s,e)obj.onDataReady(s,e)); % dummy listener;
+            end
         end
         
         function prepare(obj)
@@ -35,31 +48,39 @@ classdef NI6321TTLGenerator < NI6321Core & TTLGenerator
             % stop any execution.
             % prepare device
             prepare@NI6321Core(obj);
+            s=obj.niSession;
             
             % preparing the compilation data.
-            obj.preparedSequence=this.compile();
+            data=obj.compile();
+            obj.totalExecutionTime=length(data)*obj.getTimebase();
+            
+            if(isempty(data))return;end
+            
+            s.queueOutputData(data);
+            s.prepare();
         end
         
         function run(obj)
-            if(isempty(obj.preparedSequence))return;end
-            s=obj.niSession;
-            s.outputSingleScan(obj.preparedSequence);
+            if(obj.totalExecutionTime<=0)
+                return;
+            end
+            obj.niSession.startBackground();
         end
     end
     
     % overriden abstract compilation
     methods
-        function [rslt]=compileSequence(obj,t,data)
-            % making the compilation data vector.
-            [t,bvals]=obj.makeTTLTimedVectors(t,data);
-            
-            % removing duplicates.
-            [t,uidx]=unique(t);
-            bvals=bvals(uidx);
+        function [rslt]=compileSequence(obj,timestamps,data)
+            % making the compilation data vector with no duplicates.
+            if(isempty(timestamps))
+                rslt=[];
+                return;
+            end
+            [t,bvals]=obj.makeTTLTimedVectors(timestamps,data);
             
             % converting ttl timed data into timebase.
-            tspan=0:this.getTimebase():max(t);
-            rslt=interp1(t,bvals,tspan,'nearest');
+            tspan=0:obj.getTimebase():max(t);
+            rslt=interp1(t,bvals,tspan,'previous')';
         end
     end
 end

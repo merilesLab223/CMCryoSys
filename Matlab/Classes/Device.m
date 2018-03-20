@@ -26,8 +26,8 @@ classdef Device < handle
         % called to configure the device.
         function configure(obj)
             if(obj.isConfigured)return;end
+            configureDevice(obj);            
             obj.isConfigured=true;
-            configureDevice(obj);
         end
         
         % The call to configure. This call is the first of many calls.
@@ -44,6 +44,10 @@ classdef Device < handle
         % called to prepare the device before execution.
         % the assumption is the device can be prepared at this time.
         function prepare(obj)
+            if(~obj.isConfigured)
+                warning(['Called prepare on unconfigured device ',obj.name,'. Calling configure...']);
+                obj.configure(); % call to configure if needed.
+            end
         end
         
         % called to run the device.

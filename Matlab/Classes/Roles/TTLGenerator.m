@@ -5,11 +5,15 @@ classdef TTLGenerator < TimeBasedSignalGenerator
     % NOTE!! ---------------------------
     % Requires the abstract method compileSequence(obj,t,data)
     % ----------------------------------
+    properties
+        defaultPulseWidth=0.1; % in ms.        
+    end
     
     properties (Access = protected)
         % the collection of timed ttl values with zeros and ones.
         timedTTL=[];
         lastChanged=-1;
+        
     end
     
     methods (Access = protected)
@@ -37,11 +41,11 @@ classdef TTLGenerator < TimeBasedSignalGenerator
             end
             if(length(t)==1)
                 % append and wait for t.
-                obj.appendSequence(t,v,t);
+                obj.appendSequence(v,t);
             else
                 data=struct('t',t,'v',v);
                 waitFor=sum(t);
-                obj.appendSequence(t,data,waitFor);
+                obj.appendSequence(data,waitFor);
             end
         end
         
@@ -60,36 +64,37 @@ classdef TTLGenerator < TimeBasedSignalGenerator
         end 
         
         function Pulse(obj,tup,tdown)
-            if(~exist('tup','var'))tup=obj.getTimebase();end
+            if(~exist('tup','var'))tup=obj.defaultPulseWidth;end
             if(~exist('tdown','var'))tdown=obj.getTimebase();end
             obj.Up(tup);
             obj.Down(tdown);
         end
         
         %clear the data.
-        function [ttl]=getTimbaseTTLData(obj)
-            ttl= this.compile();
+        function [ttl,t]=getTimebaseTTLData(obj)
+            ttl=obj.compile();
+            t=(0:length(ttl)-1)*obj.getTimebase();
         end
     end
     
     % compilation methods.
     methods(Access = protected)
-        function [t,bvals]=makeTTLTimedVectors(obj,t,data)
+        function [t,bvals]=makeTTLTimedVectors(obj,timestamps,data)
             bvals=[];
             t=[];
-            for i=1:length(t)
+            for i=1:length(timestamps)
                 % timestamp.
                 if(isstruct(data))
                     idata=data{i};
-                    it=t+idata.t; % timestamps;
+                    it=timestamps(i)+idata.t; % timestamps;
                     t(end+1:end+length(it))=it;
                     bvals(end+1:end+length(it))=idata.data;
                 else
-                    t(end+1)=t;
+                    t(end+1)=timestamps(i);
                     bvals(end+1)=data{i};
                 end
             end
-            [t,sidx]=sort(t);
+            [t,sidx]=unique(t);
             bvals=bvals(sidx);
         end
     end

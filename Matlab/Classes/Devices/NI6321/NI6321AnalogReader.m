@@ -1,22 +1,15 @@
-classdef NI6321AnalogReader < NI6321Core
+classdef NI6321AnalogReader < NI6321Core & TimedMeasurementReader
     %NI6321POSITIONER Summary of this class goes here
     %   Detailed explanation goes here
     properties
-        rchan='ai0';
-        niReaderChannel=0;
+        readchan='ai0';
+        niReadereadchannel=[];
     end
     
     methods
         % constructor, and send info to parent.
         function obj = NI6321AnalogReader(varargin)
             obj=obj@NI6321Core(varargin);
-        end
-    end
-    
-    methods (Access = protected)
-        function dataBatchAvailableFromDevice(obj,s,e)
-            %LastRead=data;
-            obj.notify("DataReady",e);
         end
     end
     
@@ -31,7 +24,7 @@ classdef NI6321AnalogReader < NI6321Core
             % reader is continues.
             s.IsContinuous=true;
             
-            obj.niReaderChannel=s.addAnalogInputChannel(obj.niDevID,obj.rchan,'Voltage');
+            obj.niReadereadchannel=s.addAnalogInputChannel(obj.niDevID,obj.readchan,'Voltage');
             s.addlistener('DataAvailable',@(s,e)obj.dataBatchAvailableFromDevice(s,e));
         end
 
@@ -41,18 +34,7 @@ classdef NI6321AnalogReader < NI6321Core
             error('NI analog reader cannot have timed events.');
         end
         
-        % used to call a position event. 
-        % the position event will be called to execute data.
-        function prepare(obj)
-            s=obj.niSession;
-            s.Rate=obj.Rate;
-            obj.niSession.prepare();
-        end
-        
-        % device runner.
-        function run(obj)
-            obj.niSession.startBackground();
-        end
+        % preapre & run functions are inherited from parent.
     end
 end
 
