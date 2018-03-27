@@ -6,7 +6,7 @@ clear;
 % devices - time based.
 pos=NI6321Positioner2D('Dev1');
 counter=NI6321Counter('Dev1');
-clock=NI6321Clock('Dev1');
+clock=NI6321Clock('Dev1'); % loopback clock.
 %trigger=NI6321TTLGenerator('Dev1');
 
 %% Device configuration.
@@ -41,8 +41,8 @@ clock.configure();
 %% Image scan example.
 % clearing previous path.
 pos.clear();
-n=1000;
-totalTime=100000;% in ms.
+n=5000;
+totalTime=200000;% in ms.
 dwellTime=totalTime/(n*n);
 pos.interpolationMethod='linear';
 
@@ -94,7 +94,7 @@ clock.setClockRate(crate); % clock output can be slower since freq.
 clock.clockFreq=cfreq;
 dcol.setClockRate(crate);
 
-disp(['Measureing with, clock: ',num2str(crate),' (clockFreq: ',num2str(cfreq),' [hz])']);
+disp(['Measureing with, sampling rate: ',num2str(crate),' (clock freq: ',num2str(cfreq),' [hz])']);
 
 %% Measurement example for image
 % bin every second.
