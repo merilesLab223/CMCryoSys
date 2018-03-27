@@ -4,11 +4,14 @@ classdef TimeBasedObject < handle
     
     properties
         % The timebase
-        Rate=50000;   
         timeUnitsToSecond=1/1000;
 
         % the current time.
         curT=0; 
+    end
+    
+    properties (SetAccess = protected)
+        Rate=50000;   
     end
         
     % time methods
@@ -23,14 +26,27 @@ classdef TimeBasedObject < handle
         function goBackInTime(obj,t)
             obj.wait(-t);
         end
+        
+        % overridable set clock rate.
+        function setClockRate(obj,r)
+            obj.Rate=r;
+        end
+        
+        % move the time to nearest values.
+        function toRounded(obj,duration)
+            obj.curT=duration*ceil(obj.curT/duration);
+        end
     end
     
     % time methods
     methods
         function [tb]=getTimebase(obj)
-            tbs=(1./obj.Rate);
-            tb=tbs/obj.timeUnitsToSecond;
+            tb=obj.getSecondsTimebase()/obj.timeUnitsToSecond;
         end
+        
+        function [tbs]=getSecondsTimebase(obj)
+            tbs=(1./obj.Rate);
+        end        
     end
 end
 

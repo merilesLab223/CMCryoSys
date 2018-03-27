@@ -4,9 +4,12 @@ classdef NI6321Counter < NI6321Core & TimedMeasurementReader
     
     properties
         ctrName='ctr0'; % the counter channel.
-        clockTerm='pfi14';
-        niCounterChannel=[]; 
-        niCounterTimebase=[]; 
+        niCounterChannel=[];
+        niCounterTimebase=[];
+    end
+    
+    properties (Access = private)
+        lastDataValue=[];
     end
     
     methods
@@ -16,8 +19,21 @@ classdef NI6321Counter < NI6321Core & TimedMeasurementReader
         end
     end
     
+    methods(Access =protected)
+        function [ts,data]=processDataBatch(obj,ts,data,e)
+            loval=data(end);
+            if(isempty(obj.lastDataValue))
+                data=diff([data(1);data]);
+            else
+                data=diff([obj.lastDataValue;data]);
+            end
+            obj.lastDataValue=loval;
+        end 
+    end
+   
+    
     % device methods
-    methods
+    methods (Access = protected)
         function configureDevice(obj)
             % find the NI devie.
             obj.validateSession();
@@ -32,12 +48,14 @@ classdef NI6321Counter < NI6321Core & TimedMeasurementReader
             obj.niCounterChannel.ActiveEdge='Rising';
             s.addlistener('DataAvailable',@(s,e)obj.dataBatchAvailableFromDevice(s,e));
             disp(['Input counter configured at terminal (Unchangeable) ',obj.niCounterChannel.Terminal]);
-
-            % adding the clock connection.
-            if(ischar(obj.clockTerm)&&~isempty(obj.clockTerm))
-                s.addClockConnection('External',[obj.niDevID,'\',obj.clockTerm],'ScanClock');        
-                disp(['Input counter clock configured to terminal ',obj.clockTerm]);
-            end  
+        end
+    end
+    
+    methods
+        function prepare(obj)
+            obj.lastDataValue=[];
+            obj.initInternalTime();
+            prepare@NI6321Core(obj);
         end
     end
 end

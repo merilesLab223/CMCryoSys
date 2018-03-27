@@ -4,7 +4,7 @@ classdef NI6321Clock < NI6321Core
     
     properties
         ctrName='ctr3'; % the counter channel.
-        clockFreq=1e6;
+        clockFreq=10e6;
         dutyCycle=0.5; % in % of freq.
         niCounterChannel=[]; 
     end
@@ -25,7 +25,7 @@ classdef NI6321Clock < NI6321Core
     end
     
     % device methods
-    methods
+    methods  (Access = protected)
         function configureDevice(obj)
             % find the NI devie.
             obj.validateSession();
@@ -39,11 +39,22 @@ classdef NI6321Clock < NI6321Core
             obj.niCounterChannel=s.addCounterOutputChannel(...
                 obj.niDevID,obj.ctrName,'PulseGeneration');
             
-            obj.niCounterChannel.Frequency=obj.clockFreq;
-            obj.niCounterChannel.DutyCycle=obj.dutyCycle;
+            obj.configureClockParameters();
             
             disp(['Clock configured at terminal (Unchangeable) ',...
                 obj.niCounterChannel.Terminal]);
+        end
+        
+        function configureClockParameters(obj)
+            obj.niCounterChannel.Frequency=obj.clockFreq;
+            obj.niCounterChannel.DutyCycle=obj.dutyCycle;            
+        end
+    end
+    
+    methods
+        function prepare(obj)
+            obj.configureClockParameters();
+            prepare@NI6321Core(obj);
         end
     end
 end

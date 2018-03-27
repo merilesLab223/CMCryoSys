@@ -5,6 +5,10 @@ classdef Device < handle
         end
     end
     
+    events
+        DeviceConfigured;
+    end
+    
     properties
         name='unknown';
         isConfigured=false;
@@ -21,6 +25,16 @@ classdef Device < handle
         end
     end
     
+    methods (Access = protected)
+        % called after the device was configured. Overrideable
+        function onDeviceConfigured(obj)
+            e=EventStruct;
+            e.Data=obj;
+            obj.notify('DeviceConfigured',e);
+        end   
+  
+    end
+    
     % general execution functions.
     methods
         % called to configure the device.
@@ -28,19 +42,9 @@ classdef Device < handle
             if(obj.isConfigured)return;end
             configureDevice(obj);            
             obj.isConfigured=true;
+            obj.onDeviceConfigured();
         end
         
-        % The call to configure. This call is the first of many calls.
-        % the configuration call will be made once only.
-        % if reconfiguration is needed one is to invoke. (Invalidate
-        % config).
-        function configureDevice(obj)
-        end
-        
-        % Called with responce to timed event.
-        function ev(obj,t,data)
-        end
-
         % called to prepare the device before execution.
         % the assumption is the device can be prepared at this time.
         function prepare(obj)
@@ -49,11 +53,19 @@ classdef Device < handle
                 obj.configure(); % call to configure if needed.
             end
         end
-        
-        % called to run the device.
-        function run(obj)          
-        end
-
+    end
+    
+    methods (Abstract)
+        % called to run the current device implementation and sequence.
+        run(obj); % must override to create a device.
+    end
+    
+    methods (Abstract, Access = protected)
+        % The call to configure. This call is the first of many calls.
+        % the configuration call will be made once only.
+        % if reconfiguration is needed one is to invoke. (Invalidate
+        % config).
+        configureDevice(obj);        
     end
 end
 

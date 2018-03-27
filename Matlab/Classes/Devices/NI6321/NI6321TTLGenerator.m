@@ -27,7 +27,7 @@ classdef NI6321TTLGenerator < NI6321Core & TTLGenerator
     end
     
     % device functions.
-    methods
+    methods (Access = protected)
         function configureDevice(obj)
             % find the NI devie.
             obj.validateSession();
@@ -36,13 +36,16 @@ classdef NI6321TTLGenerator < NI6321Core & TTLGenerator
             % making the output channle/s.
             obj.niTTLChan=s.addDigitalChannel(obj.niDevID,obj.ttlchan,'OutputOnly');
             
-            % adding the clock if needed.
             if(~obj.hasExternalClock())
+                % adding and analog input channel if clock not found.
                 s.addAnalogInputChannel(obj.niDevID,obj.clockAnalogInputChan,'Voltage');
+                % must exist for startBackground.
                 s.addlistener('DataAvailable',@(s,e)obj.onDataReady(s,e)); % dummy listener;
             end
         end
-        
+    end
+    
+    methods
         function prepare(obj)
             % in base class:
             % stop any execution.

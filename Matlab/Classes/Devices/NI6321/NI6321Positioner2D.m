@@ -25,7 +25,7 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
     
 
     % device methods
-    methods
+    methods (Access = protected)
         function configureDevice(obj)
             % find the NI devie.
             obj.validateSession();
@@ -36,7 +36,9 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
             obj.niYChannel=s.addAnalogOutputChannel(obj.niDevID,obj.ychan,'Voltage');
             
         end
-
+    end
+    
+    methods
         % used to call a position event. 
         % the position event will be called to execute data.
         function prepare(obj)
@@ -62,6 +64,15 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
         end        
     end
     
+    %timebase overrides.
+    methods
+        % overridable set clock rate.
+        function setClockRate(obj,r)
+            obj.Rate=r;
+            % needed since compilation has chaged.
+            obj.Invalidate();
+        end
+    end
     
     % compilation ovveride
     methods
@@ -69,16 +80,24 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
         function [rslt]=compileSequence(obj,timestamps,data)
             % creating the data vectors according to 
             t=[];x=[];y=[]; % time vector is to identify duplicates.
+            comp=[];
+           
             for i=1:length(timestamps)
                 idata=data{i};
+                
                 tv=timestamps(i)+idata.t; % current time vector.
                 tspan=min(tv):obj.getTimebase():max(tv);
                 lt=length(tspan);
-                % interpolating
-                if(lt==0)continue;end
+                
+                if(lt==0)
+                    toc;
+                    continue;
+                end
                 if(lt>1)
+%                     tic;
                     xv=interp1(tv,idata.x,tspan,idata.method);
-                    yv=interp1(tv,idata.y,tspan,idata.method);                    
+                    yv=interp1(tv,idata.y,tspan,idata.method);      
+%                     comp(end+1)=toc;
                 else
                     xv=idata.x;
                     yv=idata.y;
@@ -88,18 +107,35 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
                 t(end+1:end+lt)=tspan;
                 x(end+1:end+lt)=xv;
                 y(end+1:end+lt)=yv;
+                
             end
             
-            % removing doplicates and sorting.
+            % appeding current time if needed.
+%             tic;
+            [maxt,maxti]=max(t);
+%             comp(end+1)=toc;
+            
+            if(maxt<obj.curT)
+                % need to extend the time.
+                t(end+1)=obj.curT;
+                x(end+1)=x(maxti);
+                y(end+1)=y(maxti);
+            end
+
+            % remove duplicates.
+%             tic;
             [t,sidx]=unique(t,'last');
             x=x(sidx);
             y=y(sidx);
+%             comp(end+1)=toc;
             
             % remaking the final vector. (In timeunits of seconds.
+%             tic;
             tspan=0:obj.getTimebase():max(t);
             x=interp1(t,x,tspan,'previous');
             y=interp1(t,y,tspan,'previous');
             rslt=[x',y'];
+%             comp(end+1)=toc;
         end        
     end    
 end

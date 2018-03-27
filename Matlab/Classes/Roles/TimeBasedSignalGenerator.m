@@ -89,6 +89,20 @@ classdef TimeBasedSignalGenerator < TimeBasedObject
             obj.lastCompilationResult=[];
             obj.Invalidate();
         end
+        
+        % returns the minimal time between two positions not including
+        % zeros.
+        function [mint]=findMinimalTime(obj)
+            [t,~]=obj.getRawSequence();
+            t=sort(t);
+            dt=diff(t);
+            dt(dt==0)=[];
+            if(isempty(dt))
+                mint= obj.getTimebase();
+                return;
+            end
+            mint=min(dt);
+        end
     end
     
     % compilation methods

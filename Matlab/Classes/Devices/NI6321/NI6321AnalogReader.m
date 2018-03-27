@@ -14,7 +14,7 @@ classdef NI6321AnalogReader < NI6321Core & TimedMeasurementReader
     end
     
     % device methods
-    methods
+    methods  (Access = protected)
         function configureDevice(obj)
             % find the NI devie.
             obj.validateSession();
@@ -27,14 +27,14 @@ classdef NI6321AnalogReader < NI6321Core & TimedMeasurementReader
             obj.niReadereadchannel=s.addAnalogInputChannel(obj.niDevID,obj.readchan,'Voltage');
             s.addlistener('DataAvailable',@(s,e)obj.dataBatchAvailableFromDevice(s,e));
         end
-
-        % used to call a position event. 
-        % the position event will be called to execute data.
-        function ev(obj,t,data)
-            error('NI analog reader cannot have timed events.');
+    end
+    
+    methods
+        % preapre & run functions are inherited from parent.     
+        function run(obj)
+            obj.initInternalTime();
+            run@NI6321Core(obj);
         end
-        
-        % preapre & run functions are inherited from parent.
     end
 end
 

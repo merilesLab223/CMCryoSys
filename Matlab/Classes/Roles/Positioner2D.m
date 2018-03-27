@@ -41,36 +41,26 @@ classdef Positioner2D < TimeBasedSignalGenerator
             data=struct('x',x,'y',y,'t',t,'method',method);
             obj.appendSequence(data,max(t)-t(1));
         end
-%         
-%         function [x,y,t]=ScanImage(obj,x,y,width,height,nX,nY,dwellTime,varargin)
-%             % image scanning should be done by x,y
-%             prs=inputParser;
-%             prs.addParameter('interpMethod',obj.interpolationMethod);
-%             prs.addParameter('multidirectional',obj.multidirectional);
-%             prs.parse(varargin{:});
-%             
-%             % generating the image scan vepsctor matrix.
-%             xv=x:width/nX:x+width;
-%             yv=y:width/nY:y+height;
-%             
-%             % generating the y vector locations.
-%             y=repmat(yv,length(yv),1); % as matrix.
-%             y=reshape(y,[length(y(:)),1]); % matrix to vector.
-%             
-%             % generating the x vector locations.
-%             if(prs.Results.multidirectional)
-%                 x=[xv,xv(end:-1:1)]; % splicing.
-%                 x=repmat(x,1,ceil(length(yv)/2))';
-%                 x=x(1:length(y));
-%             else
-%                 x=repmat(xv,1,length(yv))';
-%             end
-% 
-%             % creating the time dwell.
-%             t=(0:length(y)-1).*dwellTime;
-%             
-%             [x,y,t]=obj.GoTo(x,y,t,prs.Results.interpMethod);
-%         end
+        % returns the minimal time between two positions not including
+        % zeros. (Overriden)
+        
+        function [mint]=findMinimalTime(obj)
+            [~,data]=obj.getRawSequence();
+            t=[];
+            for i=1:length(data)
+                d=data{i};
+                lt=length(d.t);
+                t(end+1:end+lt)=d.t;
+            end
+            t=sort(t);
+            dt=diff(t);
+            dt(dt==0)=[];
+            if(isempty(dt))
+                mint= obj.getTimebase();
+                return;
+            end
+            mint=min(dt);
+        end
     end
 
 end

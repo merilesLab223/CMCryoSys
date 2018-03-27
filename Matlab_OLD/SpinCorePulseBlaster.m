@@ -4,21 +4,21 @@ classdef SpinCorePulseBlaster < handle
 		LibraryFile % spinapi.dll file
 		LibraryHeader % path to spinapi.h file
 		LibraryName % alias of loaded library
-    end	
+    end
 	
     properties (Constant = true)
-       INST_CONTINUE    = 0
-       INST_STOP        = 1
-       INST_LOOP        = 2
-       INST_END_LOOP    = 3
-       INST_JSR         = 4
-       INST_RTS         = 5
-       INST_BRANCH      = 6
-       INST_LONG_DELAY  = 7
-       INST_WAIT        = 8
-       PULSE_PROGRAM    = 0
-       
-       %flag_option map. string-to-bits
+        INST_CONTINUE    = 0
+        INST_STOP        = 1
+        INST_LOOP        = 2
+        INST_END_LOOP    = 3
+        INST_JSR         = 4
+        INST_RTS         = 5
+        INST_BRANCH      = 6
+        INST_LONG_DELAY  = 7
+        INST_WAIT        = 8
+        PULSE_PROGRAM    = 0
+
+        %flag_option map. string-to-bits
         ALL_FLAGS_ON	= hex2dec('1FFFFF');
         ONE_PERIOD		= hex2dec('200000');
         TWO_PERIOD		= hex2dec('400000');
@@ -29,9 +29,7 @@ classdef SpinCorePulseBlaster < handle
         ON				= hex2dec('E00000');
        
     end
-    
-    
-    
+
 	methods
 		function [obj] = SpinCorePulseBlaster(LibraryFile,LibraryHeader,LibraryName)
             obj.LibraryFile = LibraryFile;
@@ -47,7 +45,7 @@ classdef SpinCorePulseBlaster < handle
 		
         function [obj] = PBInit(obj)
             [err] = calllib(obj.LibraryName,'pb_init');
-            if err ~= 0,
+            if err ~= 0
                 error('Error Loading PulseBlaster Board');
             end
         end

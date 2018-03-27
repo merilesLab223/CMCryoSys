@@ -78,10 +78,17 @@ classdef NI6321Core < Device & TimeBasedObject
             obj.niDevID=obj.findNIDevice();
             obj.niSession=daq.createSession('ni');
             obj.niSession.addlistener('ErrorOccurred',@(s,e)obj.onNIError(s,e));
-            
+
+        end
+        
+        % configures clock connections after everthing else was added.
+        function onDeviceConfigured(obj)
             if(obj.hasExternalClock())
-                s.addClockConnection(obj.externalClockTerminal,'External','ScanClock');
+                obj.niSession.addClockConnection('External',...
+                    [obj.niDevID,'/',obj.externalClockTerminal],'ScanClock');
             end
+            
+            onDeviceConfigured@Device(obj);
         end
         
         function maketriggerTerms(obj)

@@ -7,13 +7,13 @@ classdef TTLGenerator < TimeBasedSignalGenerator
     % ----------------------------------
     properties
         defaultPulseWidth=0.1; % in ms.        
+        Channel=0;
     end
     
     properties (Access = protected)
         % the collection of timed ttl values with zeros and ones.
         timedTTL=[];
         lastChanged=-1;
-        
     end
     
     methods (Access = protected)
@@ -31,7 +31,9 @@ classdef TTLGenerator < TimeBasedSignalGenerator
     % TTL Methods
     methods        
         % Set the values to be down for period t.
-        function Set(obj,v,t)
+        function Set(obj,v,t,c)
+            if(~exist('c','var'))c=obj.Channel;end
+            
             lttl=0;
             if(~isempty(obj.timedTTL))
                 lttl=length(obj.timedTTL(:,1));
@@ -39,35 +41,47 @@ classdef TTLGenerator < TimeBasedSignalGenerator
             if(~exist('t','var'))
                 t=(1:length(v))*obj.getTimeBase();
             end
-            if(length(t)==1)
-                % append and wait for t.
-                obj.appendSequence(v,t);
-            else
-                data=struct('t',t,'v',v);
-                waitFor=sum(t);
-                obj.appendSequence(data,waitFor);
-            end
+            data=struct('t',t,'v',v,'c',c);
+            waitFor=sum(t);
+            obj.appendSequence(data,waitFor);
         end
         
         % Set the values to be up for period t.
-        function Up(obj,t)
+        function Up(obj,t,c)
+            if(~exist('c','var'))c=obj.Channel;end
             if(~exist('t','var'))
                 t=obj.getTimebase();
             end
-            obj.Set(ones(length(t),1),t);
+            obj.Set(ones(length(t),1),t,c);
         end
         
         % Set the values to be down for period t.
-        function Down(obj,t)
+        function Down(obj,t,c)
+            if(~exist('c','var'))c=obj.Channel;end
             if(~exist('t','var'))t=obj.getTimebase();end
-            obj.Set(zeros(length(t),1),t);
+            obj.Set(zeros(length(t),1),t,c);
         end 
         
-        function Pulse(obj,tup,tdown)
+        function Pulse(obj,tup,tdown,c)
+            if(~exist('c','var'))c=obj.Channel;end            
             if(~exist('tup','var'))tup=obj.defaultPulseWidth;end
             if(~exist('tdown','var'))tdown=obj.getTimebase();end
-            obj.Up(tup);
-            obj.Down(tdown);
+            obj.PulseTrain(1,tup,tdown,c);
+        end
+        
+        function PulseTrain(obj,n,tup,tdown,c)
+            if(~exist('c','var'))c=obj.Channel;end            
+            if(~exist('n','var'))n=1;end
+            if(~exist('tup','var'))tup=obj.defaultPulseWidth;end
+            if(~exist('tdown','var'))tdown=obj.getTimebase();end
+            
+            if(~isnumeric(tup) || ~isnumeric(tdown))
+                error('A pulse is defined buy n repeats and up/down times (numeric).');
+            end
+            
+            data=struct('tup',tup,'tdown',tdown,'c',c,'isPulse',1,'n',n);    
+            tt=(tup+tdown)*n;
+            obj.appendSequence(data,tt);
         end
         
         %clear the data.

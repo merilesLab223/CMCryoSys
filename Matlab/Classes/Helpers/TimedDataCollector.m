@@ -21,6 +21,10 @@ classdef TimedDataCollector < handle & TimeBasedObject
     properties
         IsContinues=false;
         CollectCompletedTimeBins=true;
+        defaultValue=[];
+        ExtenalClockRate=-1;
+        DefaultProcessingFunction=@(t,d)TimedDataCollector.defaultCollectionFunction(t,d);
+        BatchProcessingWarnMinTime=1000;
     end
     
     % the attached reader.
@@ -28,21 +32,28 @@ classdef TimedDataCollector < handle & TimeBasedObject
         reader=[];
         IsMeasurementValid=false;
         Duration=-1;
+        MeasurementStart=-1;
+        MeasurementEnd=-1;
+        MeasurementStartTS=-1;
+        CurrentMeasurementDuration=-1;
         Results={};
+        ResultsMap=[];
+        TimestampRateToExternalClockRatio=-1;
+        LastCollectedTimestamp=0;
     end
     
     % timebinned measurement definitions.
     properties (Access = protected)
         isAborted=0;
-        mbinPartialD={}; % bins to measure.
-        mbinPartialT={};
-        mbinF={};
+        rawData=[]; % bins to measure.
+        % data.
+        rawTimestamps=[];
+        bfidx=[];
+        fmap={};
         startTimestamps=[]; % bin time to index.    
         endTimestamps=[];
-        lastBinSearch={};
-        curMinSearchTime=-1;
-        curMaxSearchTime=Inf;
-        lastSearchTime=-1;
+        lastCompleted=-1;
+        compleatedBins=[];
     end
     
     % called when data is ready.
@@ -80,8 +91,16 @@ classdef TimedDataCollector < handle & TimeBasedObject
             if(~obj.IsMeasurementValid)obj.prepare();end
             if(obj.Duration==0)return;end
             
+            obj.CurrentMeasurementDuration=...
+                (now-obj.MeasurementStartTS)*24*60*60;
+            
+            %timestamps=;
+            
+            obj.processMeasurement(e.TimeStamps,e.Data,e);
+            obj.LastCollectedTimestamp=e.TimeStamps(end);
+            return;
             vts=obj.timestampsToValidRange(e.TimeStamps);
-            timestamps=e.TimeStamps./obj.timeUnitsToSecond;
+            
             for i=1:length(vts)
                 % convert timestamps from seconds.
                 obj.processMeasurement(timestamps(vts{i}),e.Data(vts{i}));
@@ -103,42 +122,39 @@ classdef TimedDataCollector < handle & TimeBasedObject
     end
     
     methods (Static)
-        function [rslt]=defaultCollectionFunction(d,t)
-            rslt(1)=t(1); % the timestamp.
-            rslt(2)=sum(diff(d)); % sum of changes.
+        function [rslt]=defaultCollectionFunction(t,d)
+            rslt=[t,d];
         end
     end
     
     % measure functions.
     methods
-        function Measure(obj,t,durations,f)
+        function Measure(obj,duration,f)
             % if no collection function use default.
-            if(~exist('f'))f=@(s,e)TimedDataCollector.defaultCollectionFunction(s,e);end 
-            ti=obj.curT+t-t(1);
-            if(~exist('durations','var'))
-                durations=diff([0,t]); % since first t is zero :).
-            end
-            obj.MeasureAt(ti,durations,f);
-            obj.wait(t(end));
+            if(~exist('f'))f=obj.DefaultProcessingFunction;end 
+            t=obj.curT+cumsum(duration)-duration(1); % measurement times.
+            obj.MeasureAt(t,duration,f);
+            obj.wait(sum(duration)); % wait total time.
         end
         
         % measure at.
         function MeasureAt(obj,t,duration,f)
-            if(~exist('f'))f=@(d,t)sum(diff(d));end % if no collection function assume as sum.
+            if(~exist('f'))f=obj.DefaultProcessingFunction;end % if no collection function assume as sum.
             obj.IsMeasurementValid=false;
             lt=length(t);
-            curl=length(obj.mbinPartialT);
+
             obj.startTimestamps(end+1:end+lt)=t;
             obj.endTimestamps(end+1:end+lt)=t+duration;
-            obj.mbinPartialD(end+1:end+lt)={[]};
-            obj.mbinPartialT(end+1:end+lt)={[]};
-            obj.mbinF(end+1:end+lt)={f};
+            fidx=length(obj.fmap)+1;
+            
+            obj.fmap(fidx)={f};
+            obj.bfidx(end+1:end+lt)=fidx;
         end
         
-        function [t,dwell,f]=getMesaurementParams(obj)
+        % return current measurements.
+        function [t,dwell]=getMesaurementParams(obj)
             t=obj.startTimestamps;
             dwell=obj.endTimestamps-obj.startTimestamps;
-            f=obj.mbinF;
         end
     end
     
@@ -146,18 +162,22 @@ classdef TimedDataCollector < handle & TimeBasedObject
         function clear(obj)
             obj.curT=0;
             obj.isAborted=0;
-            obj.mbinPartialD={}; % bins to measure.
-            obj.mbinPartialT={};
-            obj.mbinF={};
-            obj.startTimestamps=[]; % bin time to index.    
+            obj.fmap={};
+            obj.bfidx=[];
+            obj.IsMeasurementValid=false;
+            obj.startTimestamps=[];
             obj.endTimestamps=[];
             obj.clearData();
-            obj.IsMeasurementValid=false;
         end
         
         function clearData(obj)
             obj.Results={};
+            obj.ResultsMap=[];
             obj.clearPendingData();
+        end
+        
+        function [ct]=getRawPendingTickCount(obj)
+            ct=length(obj.rawTimestamps);
         end
         
         % prepares the measurement for use.
@@ -165,123 +185,347 @@ classdef TimedDataCollector < handle & TimeBasedObject
             if(obj.IsMeasurementValid)return;end
             
             % now sorted by time.
+            obj.Results={};
             if(~isempty(obj.startTimestamps))
                 [st,stidx]=sort(obj.startTimestamps);
                 obj.startTimestamps=obj.startTimestamps(stidx);
                 obj.endTimestamps=obj.endTimestamps(stidx);
-                obj.mbinPartialD=obj.mbinPartialD(stidx);
-                obj.mbinPartialT=obj.mbinPartialT(stidx);
-                obj.mbinF=obj.mbinF(stidx);
-                obj.Duration=obj.endTimestamps(end);                
+                obj.bfidx=obj.bfidx(stidx);
+                obj.Duration=obj.endTimestamps(end);
+                obj.MeasurementStart=obj.startTimestamps(1);
+                obj.MeasurementEnd=max(obj.endTimestamps);
+                obj.Results(1:length(obj.startTimestamps))={obj.defaultValue};
             else
                 obj.Duration=0;
+                obj.MeasurementStart=0;
+                obj.MeasurementEnd=0;
             end
             
-            % preparing the results vector.
-            obj.Results=cell(length(obj.startTimestamps),1);
-
-            obj.curMinSearchTime=-1;
-            obj.curMaxSearchTime=Inf;
-            
+            if(obj.ExtenalClockRate<0)
+                obj.ExtenalClockRate=obj.Rate;
+            end
+            obj.TimestampRateToExternalClockRatio=obj.Rate./obj.ExtenalClockRate;
+            obj.resetMeasurementTimebinData();
             obj.IsMeasurementValid=1;
         end
         
         function finalizePending(obj)
-            finalizeActiveBins(obj.lastBinSearch);
-            obj.clearPendingData();
+            obj.processCompletedBins();
+            
+            %obj.clearPendingData();
         end
     end
     
     % measurement processing. 
     methods (Access = protected)
+        function resetMeasurementTimebinData(obj)
+            obj.MeasurementStartTS=-1;
+            obj.compleatedBins=[];
+        end
+        
+        function onCompleteMeasurement(obj)
+            ev=EventStruct;
+            ev.Data=(now-obj.MeasurementStartTS)*24*60*60/obj.timeUnitsToSecond;
+            obj.notify('Complete',ev);
+        end
+        
+        function [idxs]=fastFindTimeIndexs(obj,st,en,sts,ets,isInclusive)
+            if(~exist('ets','var'))ets=sts;end
+            if(~exist('isInclusive','var'))isInclusive=0;end
+            
+            if(isInclusive)
+                idxs=find(ets>st & sts<en);
+            else
+                idxs=find(sts>=st & ets<=en);
+            end      
+        end
+        
         function clearPendingData(obj)
-            obj.lastBinSearch={};
-            obj.curMinSearchTime=-1;
-            obj.curMaxSearchTime=Inf;
-            obj.lastSearchTime=-1;
-            obj.mbinPartialD={}; % bins to measure.
-            obj.mbinPartialT={};  
+            obj.rawData=[]; % bins to measure.
+            obj.rawTimestamps=[];
         end
-        function [bidx]=getValidMeasurementBinIndexs(obj,mint,maxt)
-            if(mint==maxt)
-                % a single timebin?
-                % search for minimal.
-                maxt=mint+obj.getTimebase();
+        
+        % assume timestamps are orederd.
+        function [idxs]=fastFindMultiOrderedIndexs(obj,ts,compareTo,findMax)
+            lt=length(ts);
+            lcomp=length(compareTo);
+            idxs=ones(lt,1)*-1;
+            
+            ots=ts;
+            [ts,sidx]=sort(ts);
+            
+            if(findMax)
+                srcidxs=lt:-1:1;
+                ctidx=lcomp;
+            else
+                srcidxs=1:lt;
+                ctidx=1;
+            end
+            
+            abort=0;
+            for i=srcidxs
+                % searching for the next index where
+                % a change in value is found.
+                
+                while(true)
+                    t=ts(i);
+                    tsi=compareTo(ctidx);
+                    
+                    if(findMax && t>=tsi || ~findMax&& t<=tsi) % for both max and min. max is backwards.
+                        % moved on to the next val.
+                        idxs(i)=ctidx;
+                        break;
+                    end
+                    if(~findMax)
+                        ctidx=ctidx+1;
+                        if(ctidx>lcomp)
+                            abort=1;
+                            break;
+                        end
+                    else
+                        ctidx=ctidx-1;
+                        if(ctidx<1)
+                            abort=1;
+                            break;
+                        end                        
+                    end
+                end
+                
+                if(abort)
+                    break;% out of search pattern.
+                end            
+            end
+            idxs=idxs(sidx);
+        end
+        
+        function cleanProcessedRawData(obj)
+            % check if any other bin not included has a final timestamp
+            % larger.
+            maxt=obj.rawTimestamps(end);
+            
+            % finding the maxt to remove from.
+            tic;
+            lts=length(obj.endTimestamps);
+            % anything crosses.
+            vidxs=find(obj.endTimestamps>=maxt & obj.startTimestamps<=maxt);
+            if(~isempty(vidxs))
+                maxt=min(obj.startTimestamps(vidxs));
+                % we have something withing therefore keep the last.
+                % just in case. (Edge condition for numeric sum).
+                maxt=maxt-obj.getTimebase();
+            end
+           
+            comp=toc;
+            
+            % max index to delete.
+            if(obj.rawTimestamps(1)>=maxt)
+                return; % nothing to do.
+            end
+            
+            % finding where to delete to.
+            [~,mitd]=min(abs(obj.rawTimestamps-maxt));
+            lrt=length(obj.rawTimestamps);
+            
+            while(mitd>0 && obj.rawTimestamps(mitd)>=maxt)
+                mitd=mitd-1; % remove
+                if(mitd==0)
+                    return;
+                end
             end
 
-            % [a,b] in [x,y] if b>x && a<y
-            bidx=find(...
-                obj.endTimestamps>mint & obj.startTimestamps<maxt);
             
-            % finding min and max t. 
-            obj.curMinSearchTime=obj.startTimestamps(min(bidx));
-            obj.curMaxSearchTime=obj.endTimestamps(min(bidx));
-            
-            %bins=obj.mbin{bidx};
-            obj.lastBinSearch=bidx;
+            %mitd=find(obj.rawTimestamps>maxt,1,'first');
+            obj.rawTimestamps(1:mitd)=[]; % delete.
+            obj.rawData(1:mitd)=[]; % delete. 
         end
+        
+        function [bidxs,bstart,bend,fidxs,ts,data]=getPendingIndexsAndData(obj)
+            % all cells within the range.
+            lrts=length(obj.rawTimestamps);
+            %rawts=obj.rawTimestamps;         
+            mint=obj.rawTimestamps(1);
+            maxt=obj.rawTimestamps(end);
 
-        % overrideable.
-        function onTimebinComplete(obj,bidxs,completed)
-            if(obj.CollectCompletedTimeBins)
-                obj.Results(bidxs)=completed;
+            % defults.
+            bidxs=obj.fastFindTimeIndexs(mint,maxt,obj.startTimestamps,obj.endTimestamps);
+            bstart=[];
+            bend=[];
+            fidxs=[];
+            ts=[];
+            data=[];
+            if(isempty(bidxs))
+                return;
             end
             
-            if(~isempty(completed) && event.hasListener(obj,'TimebinComplete'))
-                %obj.notify('TimebinComplete',completed);
-                ev=EventStruct;
-                ev.Data=completed;
-                notify(obj,'TimebinComplete',ev);
+            % removing completed.
+            if(~isempty(obj.compleatedBins))
+                bidxs=setdiff(bidxs,obj.compleatedBins);
+                % check again.
+                if(isempty(bidxs))
+                    return;
+                end                
             end
+            
+            % marking as compelted.
+            obj.compleatedBins(end+1:end+length(bidxs))=bidxs;
+            
+            % export data.
+            bstart=obj.startTimestamps(bidxs);
+            bend=obj.endTimestamps(bidxs);
+            fidxs=obj.bfidx(bidxs);
+           
+            st=bstart(1);
+            et=max(bend(end));
+            tsidxs=obj.fastFindTimeIndexs(st,et,obj.rawTimestamps);
+            ts=obj.rawTimestamps(tsidxs);
+            data=obj.rawData(tsidxs);
+        end
+        
+        function [comp]=processCompletedBins(obj,cleanProcessed)
+            if(~exist('cleanProcessed','var'))cleanProcessed=1;end
+            
+            % finding completed bins idxs.
+            if(isempty(obj.rawTimestamps)) % nothing to do.
+                return;
+            end
+            
+            tic;
+            [bidxs,bstart,bend,fidxs,tsdata,rdata]=obj.getPendingIndexsAndData();
+            comp(1)=toc;
+            
+            % at this T we need to remove.
+            if(cleanProcessed)
+                tic;
+                obj.cleanProcessedRawData();
+                comp(end+1)=toc;
+            end
+            
+            if(isempty(bidxs))return;end
+            
+            if(isempty(tsdata))
+                warning('Found ready measurement bins without any data. Measurement rate too slow?');
+                return;
+            end
+            
+            % make default values (so not to remake in loop).
+            tic;
+            lbins=length(bidxs);
+            rslts={};
+            rslts(1:lbins)={[0,0]}; % default value.
+            comp(end+1)=toc;
+            
+            % Parmeters for loop.
+            lstfidx=-1;
+            
+            % finding indexs.
+            tic;
+            minidxs=obj.fastFindMultiOrderedIndexs(bstart,tsdata,0);
+            maxidxs=obj.fastFindMultiOrderedIndexs(bend,tsdata,1);
+            comp(end+1)=toc;
+            
+            tic;
+            for i=1:length(minidxs)
+                mini=minidxs(i);
+                maxi=maxidxs(i);
+                
+                matchedIdxs=mini:maxi;
+                if(mini<=0 || maxi<=0 || isempty(matchedIdxs))
+                    continue;
+                    %rsltMap(idx,:)=[0,0];
+                end
+                
+                vd=rdata(matchedIdxs);
+                vts=tsdata(matchedIdxs);
+                fidx=fidxs(i);
+                if(lstfidx<0 || lstfidx~=fidx)
+                    f=obj.fmap{fidx};
+                    lstfidx=fidx;
+                end
+                
+                % some unknown result vector..
+                rslts{i}=f(vts',vd');
+            end
+            
+            % writing results.
+            comp(end+1)=toc;
+            
+            tic;
+            obj.Results(bidxs)=rslts;
+            comp(end+1)=toc;
+            
+            tic;
+            evd=EventStruct;
+            evd.Data=bidxs;
+            obj.notify('TimebinComplete',evd);
+            comp(end+1)=toc;
+        end
+        
+        function callProcessComplete(obj)
+            disp('Completed');
         end
         
         % process the measurements for the specific timestamps.
-        function processMeasurement(obj,timestamps,data)
+        function processMeasurement(obj,timestamps,data,ev)
             % find appropriate timebins.
-            mint=timestamps(1);
-            maxt=timestamps(end);
-            
-            % get last search
-            lastActive=obj.lastBinSearch;
-            
-            % getting new valid measurems.
-            bidxs=obj.getValidMeasurementBinIndexs(mint,maxt);
-            if(length(lastActive)>0)
-                deactivatedBins=setdiff(lastActive,bidxs);
-                
-                % ending anything that needs it.
-                obj.finalizeActiveBins(deactivatedBins);                
+            if(isempty(obj.startTimestamps) || isempty(timestamps)) 
+                return;
             end
             
-
-            dlen=length(data);
+            % before measurement started.
+            if(timestamps(end)<obj.MeasurementStart)
+                obj.resetMeasurementTimebinData();
+                return;
+            end
             
-            for bidx=bidxs
-                % adding data to bin.
-                obj.mbinPartialD{bidx}(end+1:end+dlen)=data;
-                obj.mbinPartialT{bidx}(end+1:end+dlen)=timestamps;
+            % out of bounds on end, reset measurement ts and call complete.
+            if(timestamps(1)>obj.MeasurementEnd)
+                if(obj.MeasurementStartTS>-1)
+                    obj.onCompleteMeasurement();
+                end
+                
+                obj.resetMeasurementTimebinData();
+                return;
+            end
+
+            % measurement.
+            if(obj.MeasurementStartTS<0)
+                obj.MeasurementStartTS=now;
+            end
+            
+            % exrnding the search criteria since we might fall between the
+            % timebase.
+            sstart=obj.MeasurementStart-obj.getTimebase();
+            send=obj.MeasurementEnd+obj.getTimebase();
+            vidxs=find(timestamps>=sstart &...
+                timestamps<=send);
+            
+            timestamps=timestamps(vidxs);
+            data=data(vidxs);
+            ldata=length(vidxs);
+            
+            % adding to raw data.
+            tic;
+            obj.rawTimestamps(end+1:end+ldata)=timestamps;
+            obj.rawData(end+1:end+ldata)=data;
+            appendt=toc;
+            
+            % checking for compleated bins.
+            comp=0;
+            [tms]=obj.processCompletedBins();
+            comp=sum(tms);
+            if(comp>obj.BatchProcessingWarnMinTime/1000)
+                disp(['TimedDataCollector: Batch processing time is hight[ms]: '...
+                    ,num2str(comp*1000)]);
+            end
+            
+            if(timestamps(end)>=obj.MeasurementEnd)
+                if(obj.MeasurementStartTS>-1)
+                    obj.onCompleteMeasurement();
+                end
+                
+                obj.resetMeasurementTimebinData();
             end
         end
-        
-        function finalizeActiveBins(obj,completedIdxs)
-            if(isempty(completedIdxs))return;end % nothing to do.
-            
-            lcomp=length(completedIdxs);
-            completed=cell(length(completedIdxs),1);
-            
-            for i=1:lcomp
-                bidx=completedIdxs(i);
-                bf=obj.mbinF{bidx};
-                bdata=obj.mbinPartialD{bidx};
-                bts=obj.mbinPartialT{bidx};
-                
-                obj.mbinPartialD{bidx}=[]; % clear partial.
-                obj.mbinPartialT{bidx}=[]; % clear partial.
-                
-                completed{i}=bf(bdata,bts);
-            end
-            obj.onTimebinComplete(completedIdxs,completed);
-        end        
     end
 end
 
