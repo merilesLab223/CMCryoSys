@@ -30,6 +30,7 @@ classdef SpinCoreAPI < handle
 		LibraryHeaders % path to spinapi.h file (and others)
 		LibraryName % alias of loaded library
         IsInitialized=false;
+        InstructionsCount=0;
     end
 	
     properties (Constant = true)
@@ -80,6 +81,7 @@ classdef SpinCoreAPI < handle
         end
 		
         function Init(obj)
+            obj.InstructionsCount=0;
             [err] = calllib(obj.LibraryName,'pb_init');
             if err ~= 0
                 error(['Error Loading PulseBlaster Board: ',num2str(err)]);
@@ -89,6 +91,7 @@ classdef SpinCoreAPI < handle
         end
         
         function Close(obj)
+            obj.InstructionsCount=0;
             [err] = calllib(obj.LibraryName,'pb_close');
             if err < 0
                warning('Spin Core Pulse Blaster Error: Code %d',err);
@@ -120,6 +123,7 @@ classdef SpinCoreAPI < handle
         end
 		
         function StartProgramming(obj)
+            obj.InstructionsCount=0;
             [err] = calllib(obj.LibraryName,'pb_start_programming',obj.PULSE_PROGRAM);
             if err < 0
                warning('Spin Core Pulse Blaster Error: Code %d',err);
@@ -153,7 +157,8 @@ classdef SpinCoreAPI < handle
             flags = int32(bitor(flags,flagopt));
             inst = int32(inst);
             inst_data = int32(inst_data);
-            length = double(length*1e9); % or duration in seconds....
+            length = double(length*1e9); 
+            obj.InstructionsCount=obj.InstructionsCount+1;
             [err] = calllib(obj.LibraryName,'pb_inst_pbonly',flags,inst,inst_data,length);
             if err < 0
                warning('Spin Core Pulse Blaster Error: Code %d',err);

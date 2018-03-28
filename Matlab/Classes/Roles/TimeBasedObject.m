@@ -46,7 +46,11 @@ classdef TimeBasedObject < handle
         
         function [tbs]=getSecondsTimebase(obj)
             tbs=(1./obj.Rate);
-        end        
+        end
+        
+        function t=timebaseToSeconds(obj,t)
+            t=t*obj.timeUnitsToSecond;
+        end
     end
 end
 
