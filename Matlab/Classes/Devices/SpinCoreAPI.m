@@ -54,6 +54,7 @@ classdef SpinCoreAPI < handle
         FIVE_PERIOD		= hex2dec('A00000');
         SIX_PERIOD      = hex2dec('C00000');
         ON				= hex2dec('E00000');
+
     end
 
 	methods
@@ -71,7 +72,6 @@ classdef SpinCoreAPI < handle
                     end
                 end
                 loadlibrary(arglst{:});
-				%loadlibrary(obj.LibraryFile,obj.LibraryHeader,'alias',obj.LibraryName);
 			end
         end
         

@@ -1,4 +1,4 @@
-function [img] = RowScanToImageData(rslt,coln,rown,dwellTime,preview)
+function [img] = StreamToImageData(rslt,coln,rown,dwellTime,preview)
     % splicing according to dwell time.
     if(~exist('preview','var'))preview=0;end
     

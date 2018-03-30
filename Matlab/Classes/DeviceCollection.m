@@ -15,7 +15,7 @@ classdef DeviceCollection < handle
     end
     
     methods
-        function configureAllDevices(obj)
+        function []=configureAllDevices(obj)
             fnames=fieldnames(obj.devices);
             for i=1:length(fnames)
                 dn=fnames{i};
@@ -26,7 +26,7 @@ classdef DeviceCollection < handle
             end
         end
         
-        function configureAllRoles(obj)
+        function []=configureAllRoles(obj)
             % call all devices to configure.
             fnames=fieldnames(obj.roles);
             for i=1:length(fnames)
@@ -40,7 +40,7 @@ classdef DeviceCollection < handle
     end
     
     methods
-        function [obj]=setDevice(obj,name,dev)
+        function []=setDevice(obj,name,dev)
            if(~ischar(name))
                error('a device must have a name which is string.  Param "name"');
            end
@@ -63,7 +63,7 @@ classdef DeviceCollection < handle
            end
         end
         
-        function setRole(obj,role,devname)
+        function []=setRole(obj,role,devname)
            if(~ischar(devname))
                error('a device must have a name which is string.  Param "devname"');
            end
@@ -136,6 +136,10 @@ classdef DeviceCollection < handle
            end
            
            error(['device or role not found, "',name,'"']);
+        end
+        
+        function [dev]=get(obj,name)
+            dev=obj.getDeviceByRoleOrName(name);
         end
     end
 end

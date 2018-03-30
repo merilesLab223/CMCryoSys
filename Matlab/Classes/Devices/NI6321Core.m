@@ -26,7 +26,7 @@ classdef NI6321Core < Device & TimeBasedObject
     
     % methods for NI card.
     methods
-        function stop(obj)
+        function []=stop(obj)
             try
                 obj.niSession.stop();
                 obj.niSession.release();
@@ -62,7 +62,7 @@ classdef NI6321Core < Device & TimeBasedObject
             end
         end
         
-        function validateSession(obj)
+        function []=validateSession(obj)
             % find the NI devie.
             if(~isnumeric(obj.niSession))
                 return;
@@ -70,7 +70,7 @@ classdef NI6321Core < Device & TimeBasedObject
             obj.makeSession();
         end
         
-        function makeSession(obj)
+        function []=makeSession(obj)
             if(~isnumeric(obj.niSession))
                 obj.stop();
                 %obj.niSession.release();
@@ -91,7 +91,7 @@ classdef NI6321Core < Device & TimeBasedObject
             onDeviceConfigured@Device(obj);
         end
         
-        function maketriggerTerms(obj)
+        function []=maketriggerTerms(obj)
             s=obj.niSession;
             % checking for triggerTerm config.
             % adding triggerTerms.
@@ -106,7 +106,7 @@ classdef NI6321Core < Device & TimeBasedObject
             end
         end
         
-        function onNIError(obj,s,e)
+        function []=onNIError(obj,s,e)
             obj.notify('NIError',e);
         end
     end    
@@ -114,16 +114,13 @@ classdef NI6321Core < Device & TimeBasedObject
     % general method for configuration.
     methods
         % Call to run.
-        function run(obj)
+        function []=run(obj)
             obj.niSession.startBackground();
         end
         
-        function prepare(obj)
-            obj.stop();
-            
+        function []=prepare(obj)
             % call parent prepare.
             prepare@Device(obj);
-
             s=obj.niSession;
             s.Rate=obj.Rate;
             

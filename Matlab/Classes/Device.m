@@ -27,7 +27,7 @@ classdef Device < handle
     
     methods (Access = protected)
         % called after the device was configured. Overrideable
-        function onDeviceConfigured(obj)
+        function []=onDeviceConfigured(obj)
             e=EventStruct;
             e.Data=obj;
             obj.notify('DeviceConfigured',e);
@@ -38,7 +38,7 @@ classdef Device < handle
     % general execution functions.
     methods
         % called to configure the device.
-        function configure(obj)
+        function []=configure(obj)
             if(obj.isConfigured)return;end
             configureDevice(obj);            
             obj.isConfigured=true;
@@ -47,7 +47,7 @@ classdef Device < handle
         
         % called to prepare the device before execution.
         % the assumption is the device can be prepared at this time.
-        function prepare(obj)
+        function []=prepare(obj)
             if(~obj.isConfigured)
                 warning(['Called prepare on unconfigured device ',obj.name,'. Calling configure...']);
                 obj.configure(); % call to configure if needed.
@@ -57,7 +57,7 @@ classdef Device < handle
     
     methods (Abstract)
         % called to run the current device implementation and sequence.
-        run(obj); % must override to create a device.
+        []=run(obj); % must override to create a device.
     end
     
     methods (Abstract, Access = protected)
@@ -65,7 +65,7 @@ classdef Device < handle
         % the configuration call will be made once only.
         % if reconfiguration is needed one is to invoke. (Invalidate
         % config).
-        configureDevice(obj);        
+        []=configureDevice(obj);        
     end
 end
 

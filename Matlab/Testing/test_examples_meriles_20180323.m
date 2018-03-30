@@ -34,15 +34,15 @@ dcol.BatchProcessingWarnMinTime=1000;
 
 %% Configure devices.
 % call to configure.
-pos.configure();
-counter.configure();
-clock.configure();
+% pos.configure();
+% counter.configure();
+% clock.configure();
 
 %% Image scan example.
 % clearing previous path.
 pos.clear();
-n=5000;
-totalTime=200000;% in ms.
+n=1000;
+totalTime=2000;% in ms.
 dwellTime=totalTime/(n*n);
 pos.interpolationMethod='linear';
 

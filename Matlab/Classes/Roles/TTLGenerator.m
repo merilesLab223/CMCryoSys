@@ -90,8 +90,8 @@ classdef TTLGenerator < TimeBasedSignalGenerator
         
         %clear the data.
         function [ttl,t]=getTimebaseTTLData(obj)
-            ttl=obj.compile();
-            t=(0:length(ttl)-1)*obj.getTimebase();
+            [t,data]=obj.getRawSequence();
+            [t,ttl]=obj.makeTTLTimedVectors(t,data);
         end
     end
     

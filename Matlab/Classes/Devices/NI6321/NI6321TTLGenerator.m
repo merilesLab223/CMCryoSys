@@ -79,6 +79,7 @@ classdef NI6321TTLGenerator < NI6321Core & TTLGenerator
                 rslt=[];
                 return;
             end
+            
             [t,bvals]=obj.makeTTLTimedVectors(timestamps,data);
             
             % converting ttl timed data into timebase.

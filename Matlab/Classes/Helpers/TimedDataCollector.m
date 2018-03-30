@@ -40,6 +40,7 @@ classdef TimedDataCollector < handle & TimeBasedObject
         ResultsMap=[];
         TimestampRateToExternalClockRatio=-1;
         LastCollectedTimestamp=0;
+        LastResultsMeasured=0;
     end
     
     % timebinned measurement definitions.
@@ -60,29 +61,42 @@ classdef TimedDataCollector < handle & TimeBasedObject
     methods (Access = protected)
         
         % converst the data timestamps to valid data ranges. 
-        function [vts]=timestampsToValidRange(obj,ts)
+        function [vts,tOffset]=shiftTimestampsToValidRange(obj,ts)
             vts={};
-            if(~obj.IsContinues)
-                vts{1}=1:length(ts); % all indexs.
+            tOffset=[];
+            
+            % splice constants.
+            maxT=obj.MeasurementEnd;
+            lastStarted=(ceil(ts(1)/maxT)-1)*maxT; % not including edge.
+            if(lastStarted<0)
+                lastStarted=0; % first start.
+            end
+            
+            % shift the timestamps according to the last measurement start.
+            ts=ts-lastStarted;
+            
+            if(ts(end)<maxT)
+                % all values.
+                tOffset=lastStarted;
                 return;
             end
             
-            % find correct.
-            ts=ts-floor(ts(1)/obj.Duration)*obj.Duration;
+            % splicing vector according to timestamps.
+            splitLocs=find(diff([0;floor(ts/maxT)])>0); % the locations.
+            splitLocs(end+1)=length(ts); % always split at end.
+            lts=length(ts);
+            lastLoc=1;
             
-            if(ts(end)<obj.Duration)
-                % single.
-                vts{1}=1:length(ts); % all indexs.
-                return;                
-            end
-            
-            didx=find(diff(floor(ts(1)/obj.Duration))>0);
-            didx(end)=length(ts); % also add the last index.
-            sidx=1;
-            for eidx=didx
-                idxs=sidx:eids;
-                sidx=eidx;
-                vts{end+1}=idxs;
+            for idx=splitLocs
+                vts{end+1}=lastLoc:idx;
+                tOffset(end+1)=lastStarted;
+                if(idx<lts)
+                    % advance to next measurement.
+                    lastStarted=lastStarted+ts(idx+1);
+                    lastLoc=idx+1;
+                else
+                    break;
+                end
             end
         end
         
@@ -93,18 +107,38 @@ classdef TimedDataCollector < handle & TimeBasedObject
             
             obj.CurrentMeasurementDuration=...
                 (now-obj.MeasurementStartTS)*24*60*60;
+
+            % if not continues then nothing to do here.
+            if(~obj.IsContinues)
+                obj.processMeasurement(e.TimeStamps,e.Data,e);
+                return;
+            end
             
-            %timestamps=;
-            
-            obj.processMeasurement(e.TimeStamps,e.Data,e);
-            obj.LastCollectedTimestamp=e.TimeStamps(end);
-            return;
-            vts=obj.timestampsToValidRange(e.TimeStamps);
+            [vts,tOffset]=obj.shiftTimestampsToValidRange(e.TimeStamps);
+            if(isempty(vts))
+                if(e.TimeStamps(1)-tOffset<obj.getTimebase())
+                    obj.resetMeasurementTimebinData();
+                end
+                obj.processMeasurement(e.TimeStamps-tOffset,e.Data,e);
+                return;
+            end
             
             for i=1:length(vts)
+                vidxs=vts{i};
+                
+                % check if need to reset the current data set.
+                if(i>1)
+                    obj.resetMeasurementTimebinData();
+                end
+                
+                if(isempty(vidxs))
+                    continue;
+                end
+                
                 % convert timestamps from seconds.
-                obj.processMeasurement(timestamps(vts{i}),e.Data(vts{i}));
+                obj.processMeasurement(e.TimeStamps(vidxs)-tOffset(i),e.Data(vidxs));
             end
+            obj.LastCollectedTimestamp=e.TimeStamps(end);
         end
     end
     
@@ -170,6 +204,22 @@ classdef TimedDataCollector < handle & TimeBasedObject
             obj.clearData();
         end
         
+        function []=stop(obj)
+            obj.isAborted=1;
+        end
+        
+        function []=start(obj)
+            if(~obj.isAborted)
+                return;
+            end
+            obj.clearData();
+            obj.isAborted=0;
+        end
+        
+        function []=reset(obj)
+            obj.clearData();
+        end
+        
         function clearData(obj)
             obj.Results={};
             obj.ResultsMap=[];
@@ -211,8 +261,6 @@ classdef TimedDataCollector < handle & TimeBasedObject
         
         function finalizePending(obj)
             obj.processCompletedBins();
-            
-            %obj.clearPendingData();
         end
     end
     
@@ -221,6 +269,7 @@ classdef TimedDataCollector < handle & TimeBasedObject
         function resetMeasurementTimebinData(obj)
             obj.MeasurementStartTS=-1;
             obj.compleatedBins=[];
+            obj.clearPendingData();
         end
         
         function onCompleteMeasurement(obj)
@@ -342,8 +391,8 @@ classdef TimedDataCollector < handle & TimeBasedObject
         function [bidxs,bstart,bend,fidxs,ts,data]=getPendingIndexsAndData(obj)
             % all cells within the range.
             lrts=length(obj.rawTimestamps);
-            %rawts=obj.rawTimestamps;         
-            mint=obj.rawTimestamps(1);
+            %rawts=obj.rawTimestamps;
+            mint=obj.rawTimestamps(1)-obj.getTimebase();
             maxt=obj.rawTimestamps(end);
 
             % defults.
@@ -386,6 +435,7 @@ classdef TimedDataCollector < handle & TimeBasedObject
             
             % finding completed bins idxs.
             if(isempty(obj.rawTimestamps)) % nothing to do.
+                comp=0;
                 return;
             end
             
@@ -453,6 +503,10 @@ classdef TimedDataCollector < handle & TimeBasedObject
             obj.Results(bidxs)=rslts;
             comp(end+1)=toc;
             
+            % update the timestamp;
+            % in ms.
+            obj.LastResultsMeasured=now*24*60*60/obj.timeUnitsToSecond;
+            
             tic;
             evd=EventStruct;
             evd.Data=bidxs;
@@ -471,49 +525,41 @@ classdef TimedDataCollector < handle & TimeBasedObject
                 return;
             end
             
-            % before measurement started.
-            if(timestamps(end)<obj.MeasurementStart)
-                obj.resetMeasurementTimebinData();
-                return;
-            end
-            
-            % out of bounds on end, reset measurement ts and call complete.
-            if(timestamps(1)>obj.MeasurementEnd)
-                if(obj.MeasurementStartTS>-1)
-                    obj.onCompleteMeasurement();
-                end
-                
-                obj.resetMeasurementTimebinData();
-                return;
-            end
-
             % measurement.
             if(obj.MeasurementStartTS<0)
-                obj.MeasurementStartTS=now;
+                obj.MeasurementStartTS=timestamps(1);
             end
             
             % exrnding the search criteria since we might fall between the
             % timebase.
             sstart=obj.MeasurementStart-obj.getTimebase();
             send=obj.MeasurementEnd+obj.getTimebase();
-            vidxs=find(timestamps>=sstart &...
-                timestamps<=send);
             
-            timestamps=timestamps(vidxs);
-            data=data(vidxs);
-            ldata=length(vidxs);
+            % fast check boundry.
+            if(timestamps(1)>send || timestamps(end)<sstart)
+                vidxs=[];
+            else
+                % in range.
+                vidxs=find(timestamps>=sstart & timestamps<=send);
+            end
             
-            % adding to raw data.
-            tic;
-            obj.rawTimestamps(end+1:end+ldata)=timestamps;
-            obj.rawData(end+1:end+ldata)=data;
-            appendt=toc;
+            if(~isempty(vidxs))
+                timestamps=timestamps(vidxs);
+                data=data(vidxs);
+                ldata=length(vidxs);
+
+                % adding to raw data.
+                tic;
+                obj.rawTimestamps(end+1:end+ldata)=timestamps;
+                obj.rawData(end+1:end+ldata)=data;
+                appendt=toc;
+            end
             
             % checking for compleated bins.
             comp=0;
             [tms]=obj.processCompletedBins();
             comp=sum(tms);
-            if(comp>obj.BatchProcessingWarnMinTime/1000)
+            if(comp>obj.BatchProcessingWarnMinTime*obj.timeUnitsToSecond)
                 disp(['TimedDataCollector: Batch processing time is hight[ms]: '...
                     ,num2str(comp*1000)]);
             end
@@ -522,7 +568,9 @@ classdef TimedDataCollector < handle & TimeBasedObject
                 if(obj.MeasurementStartTS>-1)
                     obj.onCompleteMeasurement();
                 end
-                
+                if(~obj.IsContinues)
+                    obj.stop();
+                end
                 obj.resetMeasurementTimebinData();
             end
         end

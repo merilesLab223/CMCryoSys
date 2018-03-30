@@ -8,6 +8,7 @@ classdef SpinCoreBase < Device & TimeBasedObject
             if(~exist('LibraryName','var'))LibraryName=SpinCoreAPI.DeafultLibName;end
             
             obj.CoreAPI=SpinCoreAPI(LibraryFile,LibraryHeaders,LibraryName); % redo.
+            obj.setDeviceRate(obj.DeviceRate);
             obj.setClockRate(obj.Rate);
         end
     end
@@ -16,17 +17,29 @@ classdef SpinCoreBase < Device & TimeBasedObject
         % to change the spincoreapi functions. Call
         CoreAPI=[];
         MinimalInstructionTime=-1;
+        TimebaseMultiplier=1;
+        DeviceRate=300e6; % 300 mhz.
     end
     
     properties
-        MinimalNumberOfClockCyclesPerInstruction=5;
+        % if true the device execution will continue forever.
         IsContinues=false;
+        
+        % the minimal clock cycles for each device instruction.
+        MinInstructionClockTicks=5;
+
+    end
+     
+    properties (Constant)
+        % the offset between matlab matrix position and 
+        % channel number.
+        ChannelOffset   =1;  
     end
     
     methods (Access = protected)
         
         % configure the spincore.
-        function configureDevice(obj)
+        function []=configureDevice(obj)
             api=obj.CoreAPI;
             api.Load;
             if(api.IsInitialized)
@@ -37,10 +50,11 @@ classdef SpinCoreBase < Device & TimeBasedObject
         end
         
         function [t]=validateInstructionTime(obj,t)
-            t=obj.timebaseToSeconds(t);
+            t=obj.timebaseToSeconds(t)*obj.TimebaseMultiplier;
             if(t<obj.MinimalInstructionTime)
                 error(['Minimal instruction time is smaller then the',...
-                    ' instruction time given. Please provide instruction times',...
+                    ' instruction time given (',num2str(t),...
+                    '). Please provide instruction times',...
                     'larger then ',num2str(obj.MinimalInstructionTime),'[s]']);
             end
         end
@@ -56,14 +70,14 @@ classdef SpinCoreBase < Device & TimeBasedObject
             obj.CoreAPI.Instruct(flags,type,data,t);
         end
         
-        function StartInstructions(obj)
+        function []=StartInstructions(obj)
             api=obj.CoreAPI;
             api.SetClock(obj.Rate);
             api.Reset;
             api.StartProgramming;          
         end
         
-        function EndInstructions(obj)
+        function []=EndInstructions(obj)
             if(obj.IsContinues)
                 obj.Instruct(0,obj.CoreAPI.INST_BRANCH);
             else
@@ -71,23 +85,34 @@ classdef SpinCoreBase < Device & TimeBasedObject
             end
             obj.CoreAPI.StopProgramming();            
         end
-        
     end
     
     methods
         
-        function setClockRate(obj,rate)
+        function []=setClockRate(obj,rate)
             setClockRate@TimeBasedObject(obj,rate);
-            obj.MinimalInstructionTime=obj.getSecondsTimebase()*...
-                obj.MinimalNumberOfClockCyclesPerInstruction;
+            obj.MinimalInstructionTime=...
+                obj.MinInstructionClockTicks/obj.Rate;            
+            obj.TimebaseMultiplier=obj.DeviceRate/obj.Rate;
         end
         
-        function stop(obj)
+        function []=setDeviceRate(obj,rate)
+            obj.DeviceRate=rate;
+        end
+        
+        function []=stop(obj)
             api=obj.CoreAPI;
             api.Stop();            
         end
         
-        function run(obj)
+        function []=prepare(obj)
+            prepare@Device(obj);
+            api=obj.CoreAPI;
+            api.Reset();
+            
+        end
+        
+        function []=run(obj)
             api=obj.CoreAPI;
             api.Start();
         end
