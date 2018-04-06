@@ -131,11 +131,14 @@ classdef TimeBasedSignalGenerator < TimeBasedObject
     end
     
     % abstract compilation methods
-    methods (Abstract)
+    methods
         % should reutrn the sequence in the execution form.
         % sequence should also have data inside.
         % result is one parameter,cell or struct.
-        compileSequence(obj,t,data);
+        function [rt]=compileSequence(obj,t,data)
+            rt={};
+        end
+        
     end
     
 end

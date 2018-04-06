@@ -10,5 +10,6 @@ classdef (ConstructOnLoad) DAQEventStruct < EventStruct
         TicksElapsed=0;
         CompElapsed=0;
         AccumilatedClockOffset=0;
+        IsExecuting=0;
     end
 end

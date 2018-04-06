@@ -4,8 +4,8 @@ classdef NI6321Counter < NI6321Core & TimedMeasurementReader
     
     properties
         ctrName='ctr0'; % the counter channel.
-        niCounterChannel=[];
-        niCounterTimebase=[];
+        %niCounterChannel=[];
+        %niCounterTimebase=[];
     end
     
     properties (Access = private)
@@ -31,7 +31,6 @@ classdef NI6321Counter < NI6321Core & TimedMeasurementReader
         end 
     end
    
-    
     % device methods
     methods (Access = protected)
         function configureDevice(obj)
@@ -44,10 +43,12 @@ classdef NI6321Counter < NI6321Core & TimedMeasurementReader
             s.IsContinuous=true;
             
             % adding counter.
-            [obj.niCounterChannel,idx]=s.addCounterInputChannel(obj.niDevID,obj.ctrName,'EdgeCount');
-            obj.niCounterChannel.ActiveEdge='Rising';
-            s.addlistener('DataAvailable',@(s,e)obj.dataBatchAvailableFromDevice(s,e));
-            disp(['Input counter configured at terminal (Unchangeable) ',obj.niCounterChannel.Terminal]);
+            %[obj.niCounterChannel,idx]=...
+                s.addCounterInputChannel(obj.niDevID,obj.ctrName,'EdgeCount');
+            s.Channels(1).ActiveEdge='Rising';
+            obj.DataAvailableEventListener=...
+                s.addlistener('DataAvailable',@obj.dataBatchAvailableFromDevice);
+            disp(['Input counter configured at terminal (Unchangeable) ',s.Channels(1).Terminal]);
         end
     end
     

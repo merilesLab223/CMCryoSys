@@ -3,7 +3,7 @@ classdef NI6321AnalogReader < NI6321Core & TimedMeasurementReader
     %   Detailed explanation goes here
     properties
         readchan='ai0';
-        niReadereadchannel=[];
+        %niReadereadchannel=[];
     end
     
     methods
@@ -24,8 +24,10 @@ classdef NI6321AnalogReader < NI6321Core & TimedMeasurementReader
             % reader is continues.
             s.IsContinuous=true;
             
-            obj.niReadereadchannel=s.addAnalogInputChannel(obj.niDevID,obj.readchan,'Voltage');
-            s.addlistener('DataAvailable',@(s,e)obj.dataBatchAvailableFromDevice(s,e));
+            %obj.niReadereadchannel=...
+                s.addAnalogInputChannel(obj.niDevID,obj.readchan,'Voltage');
+            obj.DataAvailableEventListener=...
+                s.addlistener('DataAvailable',@obj.dataBatchAvailableFromDevice);
         end
     end
     

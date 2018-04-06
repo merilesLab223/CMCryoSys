@@ -208,7 +208,10 @@ classdef SpinCoreAPI < handle
         end
 		
         function delete(obj)
-            obj.Close();
+            try
+                obj.Close();
+            catch err
+            end
         end
 	end
 

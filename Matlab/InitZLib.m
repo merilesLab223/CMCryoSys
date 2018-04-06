@@ -4,6 +4,7 @@ function InitZLib()
     fpath=mfilename('fullpath');
     fpath=fileparts(fpath);
     dirlist=getAllDirectories(fpath);
+    dirlist(end+1)={fpath};
     for i=1:length(dirlist)
         if(pathHasBeenAdded(dirlist{i}))
             continue;

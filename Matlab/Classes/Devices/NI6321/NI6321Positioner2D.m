@@ -13,8 +13,8 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
         xchan='ao0';
         ychan='ao1';
 
-        niXChannel=[];
-        niYChannel=[];
+        %niXChannel=[];
+        %niYChannel=[];
         
         totalExecutionTime=0;
     end
@@ -30,10 +30,12 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
             % find the NI devie.
             obj.validateSession();
             s=obj.niSession;
-            
+            %s.IsContinuous=true;
             % adding channels.
-            obj.niXChannel=s.addAnalogOutputChannel(obj.niDevID,obj.xchan,'Voltage');
-            obj.niYChannel=s.addAnalogOutputChannel(obj.niDevID,obj.ychan,'Voltage');
+            %obj.niXChannel=...
+                s.addAnalogOutputChannel(obj.niDevID,obj.xchan,'Voltage');
+            %obj.niYChannel=...
+                s.addAnalogOutputChannel(obj.niDevID,obj.ychan,'Voltage');
             
         end
     end
@@ -43,25 +45,46 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
         % the position event will be called to execute data.
         function prepare(obj)
             % call base class.
-            prepare@NI6321Core(obj);
+            prepare@NI6321Core(obj,true);
             s=obj.niSession;
             data=obj.compile();
             spath=size(data);
             obj.totalExecutionTime=spath(1)*obj.getTimebase(); % in ms.
             
-            % pushing data.
-            s.queueOutputData(data);
+            % padding with zeros.
+            if(obj.totalExecutionTime<=0)
+                return;
+            end
             
+%             sdata=size(data);
+%             if(sdata(1)<obj.Rate)
+%                 % at least the amout of the rate.
+%                 missing=obj.Rate-sdata(1);
+%                 data=[data,
+%             end
+            
+            s.queueOutputData(data);
+            %s.queueOutputData([0,0]);
+
             % prepare the session.
+            %s.stop();
             s.prepare();
+            disp('pos prepared');
         end
         
         function run(obj)
             if(obj.totalExecutionTime<=0)
                 return;
             end
-            obj.niSession.startBackground();
-        end        
+            s=obj.niSession;
+            if(s.DurationInSeconds<=0)
+                disp('Attempting to call run on positioner without prepare. Please call prepare.');
+                return;
+            end
+            
+            s.startBackground();
+            disp('pos running');
+        end
     end
     
     %timebase overrides.
@@ -131,6 +154,10 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
             
             % remaking the final vector. (In timeunits of seconds.
 %             tic;
+            if(length(x)==1)
+                rslt=[x(1),y(1)];
+                return;
+            end
             tspan=0:obj.getTimebase():max(t);
             x=interp1(t,x,tspan,'previous');
             y=interp1(t,y,tspan,'previous');

@@ -141,6 +141,19 @@ classdef DeviceCollection < handle
         function [dev]=get(obj,name)
             dev=obj.getDeviceByRoleOrName(name);
         end
+        
+        function delete(obj)
+            try
+                dvs=fieldnames(obj.devices);
+                for i=1:length(dvs)
+                    dev=obj.devices.(dvs{i});
+                    if(ismethod(dev,'stop'))
+                        dev.stop();
+                    end
+                end
+            catch err
+            end
+        end
     end
 end
 

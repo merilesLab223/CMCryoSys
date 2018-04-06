@@ -1,15 +1,12 @@
-classdef TimedDataCollector < handle & TimeBasedObject
+classdef TimedDataCollector < handle & DataStream
     %DATACOLLECTOR Summary of this class goes here
     %   Detailed explanation goes here
     methods
         % define the reader.
         function obj = TimedDataCollector(reader)
-            if(~exist('reader','var') || ~isa(reader,'TimedMeasurementReader'))
-                error('DataReader must be of type TimedMeasurementReader.');
-            end
-            obj.reader=reader;
-            % binding the event listener.
-            reader.addDataReadyListner(@(s,e)obj.dataBatchAvailableFromDevice(s,e));
+            % call to stop operation if any.
+            % default status.
+            obj@DataStream(reader,false);
         end
     end
     
@@ -45,7 +42,6 @@ classdef TimedDataCollector < handle & TimeBasedObject
     
     % timebinned measurement definitions.
     properties (Access = protected)
-        isAborted=0;
         rawData=[]; % bins to measure.
         % data.
         rawTimestamps=[];
@@ -101,7 +97,7 @@ classdef TimedDataCollector < handle & TimeBasedObject
         end
         
         function dataBatchAvailableFromDevice(obj,s,e)
-            if(obj.isAborted)return;end;
+            if(~obj.IsRunning)return;end;
             if(~obj.IsMeasurementValid)obj.prepare();end
             if(obj.Duration==0)return;end
             
@@ -141,20 +137,7 @@ classdef TimedDataCollector < handle & TimeBasedObject
             obj.LastCollectedTimestamp=e.TimeStamps(end);
         end
     end
-    
-    % Event functions
-    methods
-        % binds a lister to the data ready event.
-        function addDataReadyListner(obj,f)
-            obj.addlistener('DataReady',f);
-        end
-        
-        % binds a lister to the complete event.
-        function addCompleteListner(obj,f)
-            obj.addlistener('Complete',f);
-        end
-    end
-    
+
     methods (Static)
         function [rslt]=defaultCollectionFunction(t,d)
             rslt=[t,d];
@@ -195,7 +178,7 @@ classdef TimedDataCollector < handle & TimeBasedObject
     methods
         function clear(obj)
             obj.curT=0;
-            obj.isAborted=0;
+            obj.IsRunning=0;
             obj.fmap={};
             obj.bfidx=[];
             obj.IsMeasurementValid=false;
@@ -204,16 +187,12 @@ classdef TimedDataCollector < handle & TimeBasedObject
             obj.clearData();
         end
         
-        function []=stop(obj)
-            obj.isAborted=1;
-        end
-        
         function []=start(obj)
-            if(~obj.isAborted)
+            if(obj.IsRunning)
                 return;
             end
             obj.clearData();
-            obj.isAborted=0;
+            start@DataStream(obj);
         end
         
         function []=reset(obj)
@@ -260,7 +239,7 @@ classdef TimedDataCollector < handle & TimeBasedObject
         end
         
         function finalizePending(obj)
-            obj.processCompletedBins();
+            obj.processCompletedBins(true);
         end
     end
     
@@ -273,6 +252,7 @@ classdef TimedDataCollector < handle & TimeBasedObject
         end
         
         function onCompleteMeasurement(obj)
+            obj.stop();
             ev=EventStruct;
             ev.Data=(now-obj.MeasurementStartTS)*24*60*60/obj.timeUnitsToSecond;
             obj.notify('Complete',ev);
@@ -388,7 +368,7 @@ classdef TimedDataCollector < handle & TimeBasedObject
             obj.rawData(1:mitd)=[]; % delete. 
         end
         
-        function [bidxs,bstart,bend,fidxs,ts,data]=getPendingIndexsAndData(obj)
+        function [bidxs,bstart,bend,fidxs,ts,data]=getPendingIndexsAndData(obj,inclusive)
             % all cells within the range.
             lrts=length(obj.rawTimestamps);
             %rawts=obj.rawTimestamps;
@@ -396,7 +376,7 @@ classdef TimedDataCollector < handle & TimeBasedObject
             maxt=obj.rawTimestamps(end);
 
             % defults.
-            bidxs=obj.fastFindTimeIndexs(mint,maxt,obj.startTimestamps,obj.endTimestamps);
+            bidxs=obj.fastFindTimeIndexs(mint,maxt,obj.startTimestamps,obj.endTimestamps,inclusive);
             bstart=[];
             bend=[];
             fidxs=[];
@@ -430,7 +410,7 @@ classdef TimedDataCollector < handle & TimeBasedObject
             data=obj.rawData(tsidxs);
         end
         
-        function [comp]=processCompletedBins(obj,cleanProcessed)
+        function [comp]=processCompletedBins(obj,inclusive,cleanProcessed)
             if(~exist('cleanProcessed','var'))cleanProcessed=1;end
             
             % finding completed bins idxs.
@@ -440,7 +420,7 @@ classdef TimedDataCollector < handle & TimeBasedObject
             end
             
             tic;
-            [bidxs,bstart,bend,fidxs,tsdata,rdata]=obj.getPendingIndexsAndData();
+            [bidxs,bstart,bend,fidxs,tsdata,rdata]=obj.getPendingIndexsAndData(inclusive);
             comp(1)=toc;
             
             % at this T we need to remove.
@@ -453,7 +433,7 @@ classdef TimedDataCollector < handle & TimeBasedObject
             if(isempty(bidxs))return;end
             
             if(isempty(tsdata))
-                warning('Found ready measurement bins without any data. Measurement rate too slow?');
+                disp('Found ready measurement bins without any data. Measurement rate too slow?');
                 return;
             end
             
@@ -535,6 +515,7 @@ classdef TimedDataCollector < handle & TimeBasedObject
             sstart=obj.MeasurementStart-obj.getTimebase();
             send=obj.MeasurementEnd+obj.getTimebase();
             
+            hasEnded=timestamps(end)>=send;
             % fast check boundry.
             if(timestamps(1)>send || timestamps(end)<sstart)
                 vidxs=[];
@@ -557,14 +538,14 @@ classdef TimedDataCollector < handle & TimeBasedObject
             
             % checking for compleated bins.
             comp=0;
-            [tms]=obj.processCompletedBins();
+            [tms]=obj.processCompletedBins(hasEnded); % if ended then inclusive.
             comp=sum(tms);
             if(comp>obj.BatchProcessingWarnMinTime*obj.timeUnitsToSecond)
                 disp(['TimedDataCollector: Batch processing time is hight[ms]: '...
                     ,num2str(comp*1000)]);
             end
             
-            if(timestamps(end)>=obj.MeasurementEnd)
+            if(timestamps(end)>=send)
                 if(obj.MeasurementStartTS>-1)
                     obj.onCompleteMeasurement();
                 end

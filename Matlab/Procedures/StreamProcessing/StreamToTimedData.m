@@ -1,44 +1,55 @@
 %% Converts the strem to time data, adding according to the rslt values.
-function [t,strm] = StreamToTimedData(rslts,tbin)
+function [t,strm] = StreamToTimedData(rslts,tbin,dt)
     if(~exist('tbin','var'))
         tbin=0.1; % in seconds.
     end
-    strmt=[];
-    strmb={};
-    l=length(rslts);
-    for i=1:l
-        ri=rslts{i};
-        if(~ismatrix(ri) || isempty(ri))
-            continue;
+    if(~ismatrix(rslts))
+        strmt=[];
+        strmb={};
+        l=length(rslts);
+        for i=1:l
+            ri=rslts{i};
+            if(~ismatrix(ri) || isempty(ri))
+                continue;
+            end
+            strmt(end+1)=ri(1,1);
+            strmb(end+1)={ri};
         end
-        strmt(end+1)=ri(1,1);
-        strmb(end+1)={ri};
+
+        [~,sidx]=sort(strmt);
+        strmb=strmb(sidx);
+
+        t=[];
+        strm=[];
+        l=length(strmb);
+        for i=1:l
+            ri=strmb{i};
+            sri=size(ri);
+            ld=sri(1);
+
+            t(end+1:end+ld)=ri(:,1);
+            strm(end+1:end+ld,:)=ri(:,2:end);
+        end
+        t=t';
+    else
+        t=rslts(:,1);
+        strm=rslts(:,2:end);
     end
     
-    [~,sidx]=sort(strmt);
-    strmb=strmb(sidx);
-    
-    t=[];
-    strm=[];
-    l=length(strmb);
-    for i=1:l
-        ri=strmb{i};
-        sri=size(ri);
-        ld=sri(1);
-        
-        t(end+1:end+ld)=ri(:,1);
-        strm(end+1:end+ld,:)=ri(:,2:end);
-    end
-    t=t';
-    if(length(t)==0)
+    if(isempty(t))
         return;
     end
     
     % according to t bins.
-    dt=t(2)-t(1);
+    if(~exist('dt','var'))
+        dt=t(2)-t(1);
+    end
     lt=length(t);
     %bin size
     binn=round(tbin/dt);
+    if(binn<1)
+        binn=1;
+    end
     %number of ticks
     ticn=ceil(lt/binn);
     missing=ticn*binn-lt;

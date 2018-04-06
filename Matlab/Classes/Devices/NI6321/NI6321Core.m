@@ -10,34 +10,66 @@ classdef NI6321Core < Device & TimeBasedObject
     
     events
         NIError;
+        
     end
     
     % properties
     properties
+        MaxWaitForTriggersToExecute=10000;
+        RunTimeout=1000;
         NICardMatchPattern='6321';
         triggerTerm='';
         
         niSession=[];
-        niTrigger=[];
+        %niTrigger=[];
+        hasTrigger=0;
         niDevID=[];
         
         externalClockTerminal='';
     end
     
+    properties (SetAccess = private)
+        IsDeleted=false;
+        BatchHandle=[];
+        LastStopTime=-1;
+    end
+    
     % methods for NI card.
     methods
         function []=stop(obj)
-            try
-                obj.niSession.stop();
-                obj.niSession.release();
-            catch e
-                warning('Error accured while trying to stop the session..');
-                error(e.message);
+            s=obj.niSession;
+%             if(s.IsRunning)
+%                 tic;
+%                 twait=obj.timebaseToSeconds(obj.MaxWaitForTriggersToExecute);
+%                 disp('Stop operation called. Waiting for operation to stop.');
+%                 while(s.TriggersRemaining>0)
+%                     if(toc<twait)
+%                         continue;
+%                     end
+%                     %if(obj. toc()
+%                     error('Stop operation called before trigger executed.');
+%                 end
+%             end
+            if(~s.IsRunning)
+                disp('Called stop on a non running session.');
+                return;
             end
+            %if(s.Trig
+            s.stop();
+            wait(s);
+            s.release();
+            wait(s);
+            obj.LastStopTime=now;
         end
         
         function [rslt]=hasExternalClock(obj)
             rslt=ischar(obj.externalClockTerminal) && ~isempty(obj.externalClockTerminal);
+        end
+    end
+    
+    methods (Access = private)
+        function [rt]=do_stopcommand(obj)
+
         end
     end
     
@@ -73,12 +105,10 @@ classdef NI6321Core < Device & TimeBasedObject
         function []=makeSession(obj)
             if(~isnumeric(obj.niSession))
                 obj.stop();
-                %obj.niSession.release();
             end
             obj.niDevID=obj.findNIDevice();
             obj.niSession=daq.createSession('ni');
-            obj.niSession.addlistener('ErrorOccurred',@(s,e)obj.onNIError(s,e));
-
+            obj.niSession.addlistener('ErrorOccurred',@obj.onNIError);
         end
         
         % configures clock connections after everthing else was added.
@@ -96,39 +126,58 @@ classdef NI6321Core < Device & TimeBasedObject
             % checking for triggerTerm config.
             % adding triggerTerms.
             if(~isempty(obj.triggerTerm))
-                if(isempty(obj.niTrigger))
+                if(~obj.hasTrigger)
                     % need to add triggerTerm.
-                    obj.niTrigger=s.addTriggerConnection('external',[obj.niDevID,'/',obj.triggerTerm],'StartTrigger');
+                    %obj.hasTrigger=1;
+                    [~,obj.hasTrigger]=s.addTriggerConnection('external',[obj.niDevID,'/',obj.triggerTerm],'StartTrigger');
                 end
-            elseif(obj.niTrigger~=0)
-                s.removeConnection(0);
-                obj.niTrigger=[]; % kill the triggerTerm.
+            elseif(obj.hasTrigger~=0)
+                s.removeConnection(obj.hasTrigger);
+                obj.hasTrigger=0;
             end
         end
         
         function []=onNIError(obj,s,e)
-            obj.notify('NIError',e);
+            warning('Found ni error while executing:');
+            %obj.stop();
+            %disp(getReport(e.Error, 'extended', 'hyperlinks', 'on' ));
+            error(e.Error);%obj.notify('NIError',e);
         end
-    end    
+    end
     
     % general method for configuration.
     methods
         % Call to run.
         function []=run(obj)
-            obj.niSession.startBackground();
+            s=obj.niSession;
+            if(s.IsRunning)
+                disp('Called run on an already running session.');
+            end
+            s.startBackground();
+            tic;
+            while(~s.IsRunning)
+                pause(0.01);
+                if(toc()>obj.timebaseToSeconds(obj.RunTimeout))
+                    error('Timeout while trying to start the session.');
+                end
+            end
         end
         
-        function []=prepare(obj)
+        function []=prepare(obj,doStop)
+            if(~exist('doStop','var'))
+                doStop=1;
+            end
             % call parent prepare.
             prepare@Device(obj);
+            if(doStop)
+                obj.stop();
+            end
             s=obj.niSession;
             s.Rate=obj.Rate;
-            
             obj.maketriggerTerms();
         end
         
         function [data]=single(obj)
-            
             isPrevContinues=obj.niSession.IsContinuous;
             if(obj.niSession.IsContinuous)
                 obj.niSession.IsContinuous=false;
@@ -136,6 +185,20 @@ classdef NI6321Core < Device & TimeBasedObject
             end
             data=obj.niSession.startForeground();
             obj.niSession.IsContinuous=isPrevContinues;
+        end
+        
+        function delete(obj)
+            try
+                if(obj.IsDeleted)
+                    return;
+                end                
+                fprintf('Destopying NI6321 session object, %s\n',...
+                    class(obj));
+                obj.stop();
+                delete(obj.niSession);
+                obj.IsDeleted=true;
+            catch err
+            end
         end
     end
 end

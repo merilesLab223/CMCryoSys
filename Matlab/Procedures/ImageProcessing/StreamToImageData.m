@@ -68,7 +68,12 @@ function [img] = StreamToImageData(rslt,coln,rown,dwellTime,preview)
         end
         totalPixels=curPixel*ticksPerPixel;
         
-        img(1:curPixel)=sum(reshape(imgvector(1:totalPixels,2),ticksPerPixel,curPixel));
+        if(ticksPerPixel==1)
+            img(1:curPixel)=imgvector(1:totalPixels,2);
+        else
+            img(1:curPixel)=sum(reshape(imgvector(1:totalPixels,2),ticksPerPixel,curPixel));
+        end
+        
 %     else
 %         data=imgvector(:,2);
 %         tbins=(1:(coln*rown))*dwellTime;        

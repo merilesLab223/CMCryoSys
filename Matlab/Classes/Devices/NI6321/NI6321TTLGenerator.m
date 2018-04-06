@@ -12,12 +12,13 @@ classdef NI6321TTLGenerator < NI6321Core & TTLGenerator
     properties
         ttlchan='port0/line0';
         clockAnalogInputChan='ai15';
-        niTTLChan=[];
-        niTTLAnalogClockChan=[];
+        %niTTLChan=[];
+        %niTTLAnalogClockChan=[];
         totalExecutionTime=0;
     end
     
     properties (Access = protected)
+        DataAvailableEventListner=[];
     end
     
     methods (Access = protected)
@@ -34,13 +35,15 @@ classdef NI6321TTLGenerator < NI6321Core & TTLGenerator
             s=obj.niSession;
             
             % making the output channle/s.
-            obj.niTTLChan=s.addDigitalChannel(obj.niDevID,obj.ttlchan,'OutputOnly');
+            %obj.niTTLChan=...
+                s.addDigitalChannel(obj.niDevID,obj.ttlchan,'OutputOnly');
             
             if(~obj.hasExternalClock())
                 % adding and analog input channel if clock not found.
                 s.addAnalogInputChannel(obj.niDevID,obj.clockAnalogInputChan,'Voltage');
                 % must exist for startBackground.
-                s.addlistener('DataAvailable',@(s,e)obj.onDataReady(s,e)); % dummy listener;
+                obj.DataAvailableEventListner=...
+                    s.addlistener('DataAvailable',@(s,e)obj.onDataReady(s,e)); % dummy listener;
             end
         end
     end
