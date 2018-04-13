@@ -15,6 +15,7 @@ classdef StreamCollector< handle & DataStream
     
     properties (SetAccess = protected)
         Data=[0;0];
+        MeanV=0;
         Timestamps=[0;0];
         LastReadTimestamp=-1;
     end
@@ -39,8 +40,10 @@ classdef StreamCollector< handle & DataStream
     methods (Access = protected)
         function dataBatchAvailableFromDevice(obj,s,e)
             if(isempty(e.TimeStamps))
+                obj.MeanV=0;
                 return;
             end
+            obj.MeanV=mean(e.Data);
             ts=obj.StreamT;
             data=obj.StreamData;
             

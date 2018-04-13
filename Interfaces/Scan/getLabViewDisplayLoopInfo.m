@@ -59,10 +59,10 @@ function [rt]=readImageData(loadData)
         miny=scaninfo.y0;
         maxy=scaninfo.y0+scaninfo.height;
     else
-        minx=0;
-        maxx=xl;
-        miny=0;
-        maxy=yl;
+        minx=-0.5;
+        maxx=0.5;
+        miny=-0.5;
+        maxy=0.5;
     end
     
     rt.xl=xl;
@@ -84,13 +84,14 @@ function [rt]=readStreamData(loadData)
     rt.dt=1;
     rt.t0=0;
     rt.wasRead=loadData;
-    
+    rt.meanV=0;
     if(~loadData || isempty(info.streamCollector.Timestamps))
         return;
     end
     
     rt.t=info.streamCollector.Timestamps';
     rt.d=info.streamCollector.Data';
+    rt.meanV=info.streamCollector.MeanV(1); % only first value.
     rt.t0=rt.t(1);
     if(length(rt.t)>1)
         rt.dt=abs(rt.t(2)-rt.t(1));
@@ -99,11 +100,3 @@ function [rt]=readStreamData(loadData)
         end
     end
 end
-
-% function [dd]=getDefaultImageData()
-%     global labview_scan_defaultDataStruct;
-%     if(isempty(labview_scan_defaultDataStruct))
-%         labview_scan_defaultDataStruct=sum(imread('default_graph_image.jpg'),3);
-%     end
-%     dd=labview_scan_defaultDataStruct;
-% end

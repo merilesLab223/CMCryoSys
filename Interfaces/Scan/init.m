@@ -1,12 +1,23 @@
 %% Initialize all devices in the system.
-function init()
+function init(alwaysReset)
+    if(~exist('alwaysReset','var'))alwaysReset=1;end
     global info;
-
-    if(~isempty(info) && info.get('scan_initialized',false))
-        return;
-    end
-    
     global devices;
+    
+    % Reset the daq since we are recreating all objects.
+    daq.reset();
+    
+    if(~isempty(info) && info.get('scan_initialized',false))
+        if(alwaysReset)
+            delete(info);
+            delete(devices);
+            info=[];
+            devices=[];
+        else
+            return;
+        end
+    end
+
     if(isempty(devices))
         devices=DeviceCollection;
     end
@@ -91,12 +102,10 @@ function imageComplete(s,e)
     reader=devices.get('scan_reader');
     pos=devices.get('scan_pos');
     
+    reader.stop();
+    clock.stop();
+    pos.stop();
+    
     disp('Image completed.'); 
-%         devices.get('scan_pos').stop();
-%         devices.get('scan_reader').stop();
-%         % just a little more...
-%         devices.get('scan_clock').stop();
-        
-    %pos.stop();
 end
 

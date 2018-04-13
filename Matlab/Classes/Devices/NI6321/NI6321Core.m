@@ -10,7 +10,6 @@ classdef NI6321Core < Device & TimeBasedObject
     
     events
         NIError;
-        
     end
     
     % properties
@@ -38,18 +37,6 @@ classdef NI6321Core < Device & TimeBasedObject
     methods
         function []=stop(obj)
             s=obj.niSession;
-%             if(s.IsRunning)
-%                 tic;
-%                 twait=obj.timebaseToSeconds(obj.MaxWaitForTriggersToExecute);
-%                 disp('Stop operation called. Waiting for operation to stop.');
-%                 while(s.TriggersRemaining>0)
-%                     if(toc<twait)
-%                         continue;
-%                     end
-%                     %if(obj. toc()
-%                     error('Stop operation called before trigger executed.');
-%                 end
-%             end
             if(~s.IsRunning)
                 disp('Called stop on a non running session.');
                 return;
