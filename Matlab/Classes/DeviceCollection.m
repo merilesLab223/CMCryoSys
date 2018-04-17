@@ -120,6 +120,10 @@ classdef DeviceCollection < handle
            rslt = obj.hasDevice(name) || obj.hasRole(name);            
         end
         
+        function [rslt]=contains(obj,name)
+            rslt=obj.hasDeviceOrRole(name);
+        end
+        
         function [dev]=getDeviceByRoleOrName(obj,name)
            if(~ischar(name))
                error('a device must have a name which is string.  Param "name"');

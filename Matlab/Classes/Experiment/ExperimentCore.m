@@ -1,106 +1,150 @@
-classdef ExperimentCore < handle
+classdef ExperimentCore < handle & dynamicprops
     
-    properties
-        ExperimentID;
+    properties (SetAccess = private)
+        ExpInfo=struct();
+        Devices=[];
     end
     
     methods
+        % return the device collection.
+        function [devs]=get.Devices(exp)
+            if(~isfield(exp.ExpInfo,'devices'))
+                exp.ExpInfo.Devices=DeviceCollection();
+            end
+            devs=exp.ExpInfo.Devices;
+        end
+        
         % registers the experiment core by name to the global
         % running object.
         function obj = ExperimentCore()
         end
         
+        % a function to be called when initializitng the object.
+        % may have a check to be called once.
         function init(obj,varargin)
-            error('The experiment code must contain a function called init.');
+            global devices;
+            if(~exist(devices))
+            end
         end
         
+        % a function to be called when running the procedure.
+        function run(obj,varargin)
+        end
+        
+        % A function to be called when we are executing the data.
         function [linfo]=loop(obj,varargin)
-            error('The experiment code must contain a function called loop.');
         end
         
-        function [rlst]=finalize(obj,varargin)
-            error('The experiment code must contain a function called finalize.');
+        % A function to be called when the data is upated.
+        function [rlst]=update(obj,varargin)
         end
         
+        % generic delete function.
         function delete(obj)
         end
     end
     
-    properties (Constant)
-        BaseFileName='ExperimentCoreClassFactory.m';
-        MatchClassName='classdef ExperimentCoreClassFactory';
-        MatchCodeInsert='% ___INPUT__CODE__INSERT__LOC';
-        ExperimentNameBaseGenerate='Temp_Exp_Class_N';
-    end
-    
-    methods (Static)
-        function [expID,errs,canExecute]=MakeExperiment(code,expID,allowMulti)
-            if(~exist('allowMulti','var'))allowMulti=0;end
-            if(~exist('code','var')||~ischar(code))error('Cannot generate experiment without code!');end
-            if(~exist('expID','var'))expID='';end
-            
-            disp(code);
-            basepath=[pwd,'\'];
-            % checking loding the global;
-            
-            if(isempty(expID))
-                [className,expID]=ExperimentCore.MakeNewExperimentClassName(...
-                    ExperimentCore.ToExperimentIDString(basepath),allowMulti);
+    methods (Access = protected)
+        % call to update a specific field.
+        function Update(obj,fid)
+            if(exist('fid','var'))
+                obj.Post('updateField',fid);
             else
-                ExperimentCore.ClearExperimentByID(expID);
-                className=ExperimentCore.ExperimentIDToClassName(expID);
-            end
-            
-            % make the script.
-            fpath=[fileparts(mfilename('fullpath')),'\',ExperimentCore.BaseFileName];
-            
-            scpt=fileread(fpath);
-            scpt=replace(scpt,ExperimentCore.MatchClassName,['classdef ',className]);
-            scpt=replace(scpt,ExperimentCore.MatchCodeInsert,code);
-
-            % write to file.
-            spath=[basepath,className,'.m'];
-            fid = fopen(spath,'wt');
-            fprintf(fid, "%s", scpt);
-            fclose(fid);
-            
-            errs=checkcode(spath,'-string');
-            canExecute=1;
-            try
-                exp=eval(className);
-                ExperimentCore.RegisterExperimentStruct(expID,exp);
-            catch err
-                canExecute=0;
+                obj.Post('updateAllFields','');
             end
         end
         
-        function RegisterExperimentStruct(expID,exp)
+        % call to notify the client of a specific event.
+        function Post(obj,ev,strdata)
+            if(~exist('strdata','var'))strdata='';end
+            
+            if(~isfield(obj.ExpInfo,'postedEvents')|| ~iscell(obj.ExpInfo.postedEvents))
+                obj.ExpInfo.postedEvents={};
+            end
+            obj.ExpInfo.postedEvents{end+1}=struct('name',ev,'data',strdata);
+        end
+    end
+    
+    methods (Static) % Events
+        function [ev,hasEvent]=getNextPostedEvent(expID)
+            ev=[];
+            hasEvent=0;
+            obj=ExperimentCore.GetExperimentByID(expID);
+            if(~isfield(obj.ExpInfo,'postedEvents')|| ~iscell(obj.ExpInfo.postedEvents))
+                return;
+            end
+            if(isempty(obj.ExpInfo.postedEvents))
+                return;
+            end
+            hasEvent=1;
+            ev=obj.ExpInfo.postedEvents{1};
+            obj.ExpInfo.postedEvents(1)=[]; % delete first.
+        end
+    end
+    
+    methods (Static)
+        function [expID,errs,canExecute]=MakeExperiment(fpath,expID)
+            if(~exist('fpath','var')||~ischar(fpath)||~exist(fpath,'file'))
+                if(~ischar(fpath))
+                    fpath='UNKNOWN';
+                end
+                error(['Cannot generate experiment without a source file (',fpath,'?)!']);
+            end
+            
+            if(~exist('expID','var'))expID='';end
+            [ftpath,className]=ExperimentCore.MakeExperimentTempFile(fpath);
+            expID=className;
+
+            errs=checkcode(ftpath,'-string');
+            canExecute=1;
+            try
+                exp=eval(className);
+                ExperimentCore.RegisterExperimentStruct(expID,exp,fpath,ftpath);
+            catch err
+                canExecute=0;
+                disp(err);
+            end
+        end
+        
+        function [fname,className]=MakeExperimentTempFile(fpath)
+            className=ExperimentCore.PathToExperimentID(fpath);
+            tempdir=[pwd,'\','ExpTemp'];
+            if(~exist(tempdir,'file')) % check for folder.
+                mkdir(tempdir);
+            end
+            addpath(tempdir);% make sure we can access it.
+            fname=[tempdir,'\',className,'.m'];
+            code=fileread(fpath);
+            code=regexprep(code,'(?<=classdef *)\w+',className,'ignorecase','once');
+            disp(code);
+            disp(fname);
+            if(exist(fname,'file'))
+                delete(fname); % delete the file.
+                disp('Deleted existing experiment file');
+            end
+            fid=fopen(fname,'a');
+            fprintf(fid,"%s",code);
+            fclose(fid);
+            disp('wrote code');
+        end
+        
+        function bindLocalFunctions(exp,fpath)
+            
+        end
+        
+        function RegisterExperimentStruct(expID,exp,fpath,tempPath)
             global experiment_core_experiment_list;
             if(~isstruct(experiment_core_experiment_list))
                 experiment_core_experiment_list=containers.Map();
             end
             experiment_core_experiment_list(expID)=exp;
-        end
-        
-        function [name]=MakeRandExperimentClassName(i)
-            name=[ExperimentCore.ExperimentNameBaseGenerate,num2str(i)];
-        end
-        
-        function [cname,expID]=MakeNewExperimentClassName(basename,allowMulti)
-            if(~exist('allowMulti','var'))allowMulti=0;end
-            cname=ExperimentCore.MakeRandExperimentClassName(0);
-            expID=[basename,cname];
-            if(~allowMulti)
-                return;
-            end
-            i=1;
-            while(ExperimentCore.HasExperimentByID(expID))
-                cname=ExperimentCore.MakeRandExperimentClassName(i);
-                expID=[basename,cname];
-                i=i+1;
+            if(isprop(exp,'ExpInfo') && isstruct(exp.ExpInfo))
+                exp.ExpInfo.id=expID;
+                exp.ExpInfo.codefile=fpath;
+                exp.ExpInfo.tempfile=tempPath;
             end
         end
-        
+
         function [rt]=HasExperimentByID(expID)
             rt=false;
             if(~exist('expID','var'))return;end
@@ -132,26 +176,19 @@ classdef ExperimentCore < handle
             rt=true;
         end
         
-        function [str]=ToExperimentIDString(str)
-            str(~isstrprop(str,'alphanum'))='_';
+        function [expID]=PathToExperimentID(fpath)
+            expID=['Exp',hash(lower(fpath)),'C'];
         end
-        
-        function [className]=ExperimentIDToClassName(str)
-            className='';
-            locs=strfind(str,ExperimentCore.ExperimentNameBaseGenerate);
-            if(isempty(locs))
-                return;
-            end
-            className=str(locs(end):end);
-        end
-        
+    end
+    
+    methods(Static) % propeties and functions
         function varargout=invoke(expID,name,varargin)
             varargout={};
             exp=ExperimentCore.GetExperimentByID(expID);
             if(isempty(exp) || ~ismethod(exp,name))
                 return;
             end
-            nargs=nargout([class(exp),'>',class(exp),'.',name]);
+            nargs=nargout_for_class(exp,name);
             if(nargs==0)
                 exp.(name)(varargin{:});
                 return;
@@ -163,7 +200,7 @@ classdef ExperimentCore < handle
         function [rt]=SetPropertyByName(expID,pname,pval)
             rt=0;
             exp=ExperimentCore.GetExperimentByID(expID);
-            if(isempty(exp) || ~ismethod(exp,name))
+            if(isempty(exp))
                 return;
             end
             if(~isprop(exp,pname))
