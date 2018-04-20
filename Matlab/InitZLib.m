@@ -1,8 +1,10 @@
 % Calls to include all the code in the associated libreries of Zav\Code
 % in the dropbox.
-function InitZLib()
-    fpath=mfilename('fullpath');
-    fpath=fileparts(fpath);
+function InitZLib(fpath)
+    if(~exist('fpath','var'))
+        fpath=mfilename('fullpath');
+        fpath=fileparts(fpath);
+    end
     dirlist=getAllDirectories(fpath);
     dirlist(end+1)={fpath};
     for i=1:length(dirlist)
