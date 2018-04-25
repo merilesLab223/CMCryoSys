@@ -11,14 +11,6 @@ classdef ObjectMap < handle
     % fast get meta info.
     
     methods(Static)
-        function [t]=IsField(o,name)
-            t=false;
-            try
-                [~]=o.(name);
-                t=true;
-            catch err
-            end
-        end
         
         % returns the type to be associated with the object for the object tree
         % purpose.
@@ -31,16 +23,15 @@ classdef ObjectMap < handle
                 t='object';
             elseif(isstring(o)||ischar(o))
                 t='string';
+            elseif(islogical(o))
+                t='boolean';
             elseif(isnumeric(o))
                 % numeric.
-                if(islogical(o))
-                    t='boolean';
-                elseif(~isreal(o))
+                if(~isreal(o))
                     t='complex';
                 else
                     t='real';
                 end
-                
             else
                 t='unconvertable';
             end
@@ -129,12 +120,9 @@ classdef ObjectMap < handle
         
         % search and find the value id exists.
         function [val,hasval]=getValueFromNamepath(o,namepath,to)
+            hasval=0;            
             val=ObjectMap.getDefaultValue(to);
-            if(isempty(strtrim(namepath)))
-                val=o;
-                return;
-            end
-
+            
             namepathAr=strsplit(namepath,ObjectMap.PathSeperator);
             [v,hasval]=ObjectMap.findValue(o,namepathAr,1);
             if(logical(hasval) || strcmp(ObjectMap.getType(v),to))
@@ -144,78 +132,105 @@ classdef ObjectMap < handle
     end
     
     methods(Static, Access = protected)
+        function [name,idx]=parseNameParams(namepath)
+            name=strtrim(namepath);
+            idx=-1;
+            
+            % search for indexs (would apply only to cells).
+            arsplit=strsplit(name,ObjectMap.ArraySeperator); % notation for indexing.
+            
+            if(length(arsplit)>1)
+                idx=str2num(arsplit{2})+1; % convert from index zero to 1.
+                name=arsplit{1};
+            end
+            
+            if(~isvarname(name))
+                % if the variables must be trucked (thire name)
+                % would mean that you cannot update this variable
+                % back to labview.
+                name(~isstrprop(name,'alphanum'))='_';
+            end            
+        end
+        function [name,isfound,aschild,idx]=findUpdateObject(o,namepathAr,i)
+            isfound=0;
+            
+            % getting the name parameters.
+            [name,idx]=parseNameParams(namepath);
+            
+            % check if child.
+            aschild=~isempty(name);
+
+            % must be a field now.
+            if(~isempty(name)&&~isfield(o,name))
+                return;
+            end
+            
+            isfound=1;
+        end
         
         function [rt,hasval]=findValue(o,namepathAr,i)
             hasval=0;
             rt=[];
             
-            % getting the corrected name.
-            name=strtrim(namepathAr{i});
-
-            % search for indexs (would apply only to cells).
-            arsplit=strsplit(name,ObjectMap.ArraySeperator); % notation for indexing.
-            idx=-1;
-            if(length(arsplit)>1)
-                idx=str2num(arsplit{2})+1; % convert from index zero to 1.
-                name=arsplit{1};
-            end
-
-            if(~isvarname(name))
-                % ignore this not a name.
-                % nothing to update.
+            [name,isfound,aschild,idx]=ObjectMap.findUpdateObject(o,namepathAr,i);
+            
+            if(~isfound)
                 return;
             end
-
-            % must be a field now.
-            if(~ObjectMap.IsField(o,name))
-                return;
+            
+            if(aschild)
+                o=o.(name);
             end
- 
-            if(i==length(namepathAr)) 
-                % the value.
-                hasval=1;
-                if(idx>0)
-                    rt=o.(name);%{idx};
-                    rt=rt{idx};
-                else
-                    rt=o.(name);
-                end
-                return;
-            end
-            co=o.(name);
+            
             if(idx>0)
                 % looking in array.
-                if(length(o.(name))>idx)
+                if(length(o)<idx)
                     return;
                 end
-                co=co{idx};
+                o=o{idx};
             end
-            [rt,hasval]=ObjectMap.findValue(co,namepathAr,i+1);
+            [rt,hasval]=ObjectMap.findValue(o,namepathAr,i+1);
         end
         
         function [o]=updateByPath(o,namepathAr,val,i)
-            % getting the corrected name.
-            name=strtrim(namepathAr{i});
-
-            % search for indexs (would apply only to cells).
-            arsplit=strsplit(name,ObjectMap.ArraySeperator); % notation for indexing.
-            idx=-1;
-            if(length(arsplit)>1)
-                idx=str2num(arsplit{2})+1; % convert from index zero to 1.
-                name=arsplit{1};
-            end
-
-            if(~isvarname(name))
-                % ignore this not a name.
-                % nothing to update.
+            [name,isfound,aschild,idx]=ObjectMap.findUpdateObject(o,namepathAr,i);
+            
+            if(~aschild)
+                % is array but not cells? reset.
+                if(idx>0 && ~iscell(o))
+                    o={};
+                end
+                
+                % updating the self.
+                if(i==length(namepathAr))
+                    if(idx>0)
+                        o{idx}=val;
+                    else
+                        o=val;
+                    end
+                elseif(idx>0)
+                    ival=[]; % nothing.
+                    if(length(o)>=idx)
+                        ival=o{idx};
+                    end
+                    o{idx}=ObjectMap.updateByPath(ival,namepathAr,val,i+1);
+                else
+                    o=ObjectMap.updateByPath(o,namepathAr,val,i+1);
+                end
                 return;
             end
-%            name(~isstrprop(name,'alphanum'))='_';  
-
-            if(~isstruct(o))
-                o=struct();
+            
+            % nothing we can do.
+            if(~isfound && isobject(o))
+                return;
             end
-
+            
+            % check the parent... 
+            if(isnumeric(o) || isobject(o)&&idx>=0)
+                disp('reseting object');
+                o={};
+            end
+            
             if(i==length(namepathAr))
                 % the value.
                 if(idx>0)
@@ -227,11 +242,15 @@ classdef ObjectMap < handle
             end
 
             % Creating if needed.
-            if(~ObjectMap.IsField(o,name))
+            if(~isfound)
                 o.(name)={}; % either array or struct.
             end
-
+            
             if(idx>0)
+                % is array but not cells? reset.
+                if(~iscell(o.(name)))
+                    o.(name)={};
+                end                
                 ival=[]; % nothing.
                 if(length(o.(name))>=idx)
                     ival=o.(name){idx};
@@ -239,7 +258,7 @@ classdef ObjectMap < handle
                 o.(name){idx}=ObjectMap.updateByPath(ival,namepathAr,val,i+1);
             else
                 o.(name)=ObjectMap.updateByPath(o.(name),namepathAr,val,i+1);
-            end            
+            end    
         end
         
         % recursive call to update an object.
@@ -270,14 +289,11 @@ classdef ObjectMap < handle
                         % and we want to convert to another lang.
                         newname=[basename,ObjectMap.ArraySeperator,num2str(i-1)];
                         ObjectMap.parseObject(col,o(i),newname);
-                    end            
+                    end    
                 case 'object'
-                    if(~isempty(basename))
-                        basename=[basename,'@'];
-                    end
+                    basename=[basename,'@'];
                     try
-                        %metaclass(o).PropertyList
-                        om={'X','Y'};%'fieldnames(o);
+                        om=fieldnames(o);
                         for i=1:length(om)
                             fn=om{i};
                             ObjectMap.parseObject(col,o.(fn),[basename,fn]);
@@ -289,6 +305,8 @@ classdef ObjectMap < handle
                     col(basename)=o;
             end
         end
+        
     end
+
 end
 

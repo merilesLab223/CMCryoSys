@@ -12,7 +12,7 @@ tidx=exp.ExpInfo.SetTemp(tmp);
 
 %% Updating experiment parameter.
 [mapid]=ExperimentCore.MakeTempUpdateMap(expID);
-ExperimentCore.PopulateUpdateMap(expID,mapid,'a@b',tmp.b);
+ExperimentCore.PopulateUpdateMap(expID,mapid,'@b',tmp.b);
 ExperimentCore.UpdateTempFieldFromMap(expID,tidx,mapid);
 
 disp(['Value after change, idx=',num2str(tidx)]);

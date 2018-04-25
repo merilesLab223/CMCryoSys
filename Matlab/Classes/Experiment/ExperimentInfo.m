@@ -8,19 +8,18 @@ classdef ExperimentInfo < handle
         end
     end
     properties
-        postedEvents={}; % a list of the posted events.
         ID='';
         CodeFile='';
         TempFile='';
     end
     
-    properties (SetAccess = protected)
-        Devices=DeviceCollection(); % the device collection.        
+    properties (SetAccess = protected)     
         LastTempID=0;
     end
     
     properties(Access = protected)
         Temp=[];
+        Events={};
     end
     
     methods (Access = protected, Static)
@@ -32,6 +31,29 @@ classdef ExperimentInfo < handle
         end
     end
     
+    % events methods
+    methods
+        function [evs]=getPendingEvents(obj,clearOld)
+            if(~exist('clearOld','var'))
+                clearOld=0;
+            end
+            evs=obj.Events;
+            if(clearOld)
+                obj.Events={};
+            end
+        end
+        
+        function PostEvent(obj,name,val,cat)
+            ev={};
+            ev.Name=name;
+            ev.Category=cat;
+            ev.Value=val;
+            ev.TimeStamp=now()*24*60*60; % to seconds.
+            obj.Events{end+1}=ev;
+        end
+    end
+    
+    % temp methods
     methods
         function [idx]=GetFreeIdx(obj)
             idx=obj.LastTempID;

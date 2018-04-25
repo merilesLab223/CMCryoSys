@@ -8,6 +8,9 @@ classdef ImageScan < ExperimentCore
     properties
         Position=struct();
         ScanConfig=struct();
+        StreamConfig=struct();
+        StreamTrace=[]; % A value to update.
+        TestControl='';
     end
     
     % privately set properties.
