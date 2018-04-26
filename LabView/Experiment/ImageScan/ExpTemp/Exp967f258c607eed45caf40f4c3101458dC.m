@@ -10,7 +10,9 @@ classdef Exp967f258c607eed45caf40f4c3101458dC < ExperimentCore
         ScanConfig=struct();
         StreamConfig=struct();
         StreamTrace=[]; % A value to update.
+        ScanImage=[];
         TestControl='';
+        SomeAr=[];
     end
     
     % privately set properties.

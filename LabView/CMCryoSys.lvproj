@@ -63,7 +63,6 @@
 				<Item Name="whitespace.ctl" Type="VI" URL="/&lt;vilib&gt;/Utility/error.llb/whitespace.ctl"/>
 			</Item>
 			<Item Name="MatlabEditor.dll" Type="Document" URL="../../CSharp/MatlabEditor/MatlabEditor/bin/Debug/MatlabEditor.dll"/>
-			<Item Name="matscript.dll" Type="Document"/>
 		</Item>
 		<Item Name="Build Specifications" Type="Build"/>
 	</Item>

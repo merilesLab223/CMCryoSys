@@ -245,7 +245,6 @@ classdef ExperimentCore < handle
         end
         
         function [rt]=UpdatePropetiesFromTempValue(expID,idx,clearTemp)
-            
             rt=0;
             exp=ExperimentCore.GetExperimentByID(expID);
             if(~isobject(exp))
@@ -257,24 +256,23 @@ classdef ExperimentCore < handle
                 ExperimentCore.ClearTempField(expID,idx);
             end
             
-            if(~iscell(data))
-                data={data};
+            if(iscell(data))
+                % cannot be a cell must have a named value to update.
+                % to update.
+                return; 
             end
             
-            for i=1:length(data)
-                di=data{i};
-                names=fieldnames(di);
-                %lastError='';
-                for i=1:length(names)
-                    pname=names{i};
-                    if(~isprop(exp,pname))
-                        continue;
-                    end
-                    % updating.
-                    exp.(pname)=di.(pname);
-                    rt=1;
-                end                
-            end
+            names=fieldnames(data);
+            %lastError='';
+            for i=1:length(names)
+                pname=names{i};
+                if(~isprop(exp,pname))
+                    continue;
+                end
+                % updating.
+                exp.(pname)=data.(pname);
+                rt=1;
+            end                
         end
         
         function [pnames]=ListExperimentProperties(expID)
@@ -409,37 +407,6 @@ classdef ExperimentCore < handle
             tos=strjoin(strtrim(tos),newline);
             namePaths=strjoin(strtrim(namePaths),newline);
         end
-%         
-%         function [mapid]=MakeTempUpdateMap(expID,l)
-%             exp=ExperimentCore.GetExperimentByID(expID);
-%             if(~exist('l','var'))l=0;end
-%             if(~isobject(exp))
-%                 %error('Experiment not found when trying to set temp value.');
-%                 return;
-%             end
-%             
-%             map=struct();
-%             map.values=cell(1,l);
-%             map.names=cell(1,l);
-%             mapid=exp.ExpInfo.SetTemp(map);
-%         end
-%         
-%         function []=PopulateUpdateMap(expID,mapid,name,val,idx)
-%             exp=ExperimentCore.GetExperimentByID(expID);
-%             
-%             if(~isobject(exp))
-%                 %error('Experiment not found when trying to set temp value.');
-%                 return;
-%             end
-%             
-%             map=exp.ExpInfo.GetTemp(mapid);
-%             if(~exist('idx','var'))
-%                 idx=length(map.values)+1;
-%             end
-%             map.values{idx}=val;
-%             map.names{idx}=name;
-%             exp.ExpInfo.SetTemp(map,mapid);
-%         end
         
         % search and find the value id exists.
         function [val,vs,hasval]=GetValueFromTemp(expID,idx,namepath,to)
@@ -456,8 +423,9 @@ classdef ExperimentCore < handle
             o=exp.ExpInfo.GetTemp(idx);
             [val,hasval]=ObjectMap.getValueFromNamepath(o,namepath,to);
             vs=size(val);
+            vs=vs(end:-1:1);
             if(isnumeric(val) && numel(val)>1)
-                val=reshape(val,[1,numel(val)]);
+                val=reshape(double(val),[1,numel(val)]);
             end
         end
     end

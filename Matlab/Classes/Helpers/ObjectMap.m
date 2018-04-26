@@ -112,153 +112,177 @@ classdef ObjectMap < handle
         
         % update a sepcific value of an object given a namepath
         % and a value.
-        function [o]=update(o,namepath,val)
+        function [o,wasUpdated]=update(o,namepath,val)
             namepathAr=strsplit(namepath,ObjectMap.PathSeperator);
-            o=ObjectMap.updateByPath(o,namepathAr,val,1);
+            [o,wasUpdated]=ObjectMap.updateByPath(o,namepathAr,val,1);
         end
         
         
         % search and find the value id exists.
         function [val,hasval]=getValueFromNamepath(o,namepath,to)
-            hasval=0;            
-            val=ObjectMap.getDefaultValue(to);
+            hasval=0;
+            hasType=0;
+            if(exist('to','var'))
+                val=ObjectMap.getDefaultValue(to);
+                hasType=1;
+            else
+                val=[];
+            end
             
             namepathAr=strsplit(namepath,ObjectMap.PathSeperator);
             [v,hasval]=ObjectMap.findValue(o,namepathAr,1);
-            if(logical(hasval) || strcmp(ObjectMap.getType(v),to))
+            if(hasType&&~strcmp(ObjectMap.getType(v),to))
+                return;
+            end
+            
+            if(hasval)
                 val=v;
             end
         end
     end
     
     methods(Static, Access = protected)
-        function [name,idx]=parseNameParams(namepath)
-            name=strtrim(namepath);
-            idx=-1;
-            
-            % search for indexs (would apply only to cells).
-            arsplit=strsplit(name,ObjectMap.ArraySeperator); % notation for indexing.
-            
-            if(length(arsplit)>1)
-                idx=str2num(arsplit{2})+1; % convert from index zero to 1.
-                name=arsplit{1};
-            end
-            
-            if(~isvarname(name))
-                % if the variables must be trucked (thire name)
-                % would mean that you cannot update this variable
-                % back to labview.
-                name(~isstrprop(name,'alphanum'))='_';
-            end            
-        end
-        function [name,isfound,aschild,idx]=findUpdateObject(o,namepathAr,i)
-            isfound=0;
-            
-            % getting the name parameters.
-            [name,idx]=parseNameParams(namepath);
-            
-            % check if child.
-            aschild=~isempty(name);
-
-            % must be a field now.
-            if(~isempty(name)&&~isfield(o,name))
-                return;
-            end
-            
-            isfound=1;
-        end
-        
         function [rt,hasval]=findValue(o,namepathAr,i)
             hasval=0;
-            rt=[];
+            rt=[];   
             
-            [name,isfound,aschild,idx]=ObjectMap.findUpdateObject(o,namepathAr,i);
-            
-            if(~isfound)
+            if(i>length(namepathAr))
+                % reached path end, o is the value.
+                % has to be.
+                rt=o;
+                hasval=1;
                 return;
             end
             
-            if(aschild)
-                o=o.(name);
-            end
-            
-            if(idx>0)
-                % looking in array.
-                if(length(o)<idx)
+            % Geting the type of the object to check for.
+            to=ObjectMap.getType(o);
+            namepart=namepathAr{i};
+
+            switch(to)
+                case 'unconvertable'
+                    % nothing to do.
                     return;
-                end
-                o=o{idx};
+                case 'carray'
+                    % expecting an index.
+                    idx=str2num(namepart)+1;
+                    if(idx<1 || length(o)<idx)
+                        return;
+                    end
+                    [rt,hasval]=ObjectMap.findValue(o{idx},namepathAr,i+1);
+                case 'sarray'
+                    idx=str2num(namepart)+1;
+                    if(idx==0 || length(o)<idx)
+                        return;
+                    end
+                    [rt,hasval]=ObjectMap.findValue(o(idx),namepathAr,i+1);
+                case 'object'
+                    if(~isvarname(namepart))
+                        % if the variables must be trucked (thire name)
+                        % would mean that you cannot update this variable
+                        % back to labview.
+                        namepart(~isstrprop(namepart,'alphanum'))='_';
+                    end
+                    if(~isfield(o,namepart))
+                        return;
+                    end
+                    [rt,hasval]=ObjectMap.findValue(o.(namepart),namepathAr,i+1);
+                otherwise
+                   if(length(namepathAr)==i)
+                       rt=o;
+                       hasval=1;
+                   else
+                       %error in namepath.
+                   end
+                   return;
             end
-            [rt,hasval]=ObjectMap.findValue(o,namepathAr,i+1);
         end
         
-        function [o]=updateByPath(o,namepathAr,val,i)
-            [name,isfound,aschild,idx]=ObjectMap.findUpdateObject(o,namepathAr,i);
+        function [rt]=isNamePartAnArrayIndex(namepathAr,i)
+            rt=0;
+            if(length(namepathAr)>=i)
+                namepart=namepathAr{i};
+                if(~isempty(namepart))
+                    rt=isstrprop(namepart(1),'digit');
+                end
+            end
+        end
+        
+        function [o,wasUpdated]=updateByPath(o,namepathAr,val,i)
+            wasUpdated=0; 
             
-            if(~aschild)
-                % is array but not cells? reset.
-                if(idx>0 && ~iscell(o))
-                    o={};
+            if(i>length(namepathAr))
+                % reached path end, o is the value
+                wasUpdated=1;
+                o=val;
+                return;
+            end
+            
+            % check if next is an index.
+            isArrayIndex=ObjectMap.isNamePartAnArrayIndex(namepathAr,i);
+            namepart=namepathAr{i};
+            
+            % checking if the current object matches the needed value type.
+            to=ObjectMap.getType(o);
+            if(isArrayIndex)
+                % expecting an array.
+                idx=str2num(namepart)+1;   
+                if(idx<1)
+                    idx=1;
                 end
                 
-                % updating the self.
-                if(i==length(namepathAr))
-                    if(idx>0)
-                        o{idx}=val;
-                    else
-                        o=val;
-                    end
-                elseif(idx>0)
-                    ival=[]; % nothing.
-                    if(length(o)>=idx)
-                        ival=o{idx};
-                    end
-                    o{idx}=ObjectMap.updateByPath(ival,namepathAr,val,i+1);
-                else
-                    o=ObjectMap.updateByPath(o,namepathAr,val,i+1);
-                end
-                return;
-            end
-            
-            % nothing we can do.
-            if(~isfound && isobject(o))
-                return;
-            end
-            
-            % check the parent... 
-            if(isnumeric(o) || isobject(o)&&idx>=0)
-                disp('reseting object');
-                o={};
-            end
-            
-            if(i==length(namepathAr))
-                % the value.
-                if(idx>0)
-                    o.(name){idx}=val;
-                else
-                    o.(name)=val;
-                end
-                return;
-            end
+                switch(to)
+                    case 'sarray'
+                        ival=[];
+                        if(idx<=length(o))
+                            ival=o(idx);
+                        end
+                        
+                        [ival,wasUpdated]=ObjectMap.updateByPath(ival,namepathAr,val,i+1);
+                        o(idx)=ival;
+                    otherwise
+                        ival=[];
+                        if(strcmp(to,'carray'))
+                            if(idx<=length(o))
+                                ival=o{idx};
+                            end
+                        else
+                            % anything else is not an array, overwrite o.
+                            o={};
+                        end
 
-            % Creating if needed.
-            if(~isfound)
-                o.(name)={}; % either array or struct.
-            end
-            
-            if(idx>0)
-                % is array but not cells? reset.
-                if(~iscell(o.(name)))
-                    o.(name)={};
-                end                
-                ival=[]; % nothing.
-                if(length(o.(name))>=idx)
-                    ival=o.(name){idx};
+                        [ival,wasUpdated]=ObjectMap.updateByPath(ival,namepathAr,val,i+1);
+                        o{idx}=ival;
+                        return;
                 end
-                o.(name){idx}=ObjectMap.updateByPath(ival,namepathAr,val,i+1);
             else
-                o.(name)=ObjectMap.updateByPath(o.(name),namepathAr,val,i+1);
-            end    
+                % should be an object (otherwise already dealt with;
+                ival=[];
+                isAnArray=ObjectMap.isNamePartAnArrayIndex(namepathAr,i+1);
+                updateToSelf=isempty(namepart);
+
+                if(updateToSelf)
+                    ival=o;
+                elseif(isfield(o,namepart))
+                    ival=o.(namepart);
+                    to=ObjectMap.getType(ival);
+                end
+                
+                % check for construct.
+                if(isAnArray)
+                    if(~strcmp(to,'sarray')&&~strcmp(to,'carray'))
+                        ival={};
+                    end
+                elseif(~strcmp(to,'object'))
+                    ival=struct();
+                end
+                
+                if(updateToSelf)
+                    [o,wasUpdated]=ObjectMap.updateByPath(ival,namepathAr,val,i+1); 
+                else
+                    [o.(namepart),wasUpdated]=ObjectMap.updateByPath(ival,namepathAr,val,i+1); 
+                end
+
+            end  
         end
         
         % recursive call to update an object.
@@ -272,34 +296,40 @@ classdef ObjectMap < handle
                     if(isempty(o))
                         return; % nothing to do.
                     end
+                    if(~isempty(basename))
+                        basename=[basename,ObjectMap.PathSeperator];
+                    end                       
                     l=numel(o);
                     for i=1:l
                         % note -1 is since matlab index start from 1
                         % and we want to convert to another lang. 
-                        newname=[basename,ObjectMap.ArraySeperator,num2str(i-1)];
+                        newname=[basename,num2str(i-1)];
                         ObjectMap.parseObject(col,o{i},newname);
                     end
                 case 'sarray'
                     if(isempty(o))
                         return; % nothing to do.
                     end
+                    if(~isempty(basename))
+                        basename=[basename,ObjectMap.PathSeperator];
+                    end                    
                     l=numel(o);
                     for i=1:l
                         % note -1 is since matlab index start from 1
                         % and we want to convert to another lang.
-                        newname=[basename,ObjectMap.ArraySeperator,num2str(i-1)];
+                        newname=[basename,num2str(i-1)];
                         ObjectMap.parseObject(col,o(i),newname);
                     end    
                 case 'object'
-                    basename=[basename,'@'];
-                    try
-                        om=fieldnames(o);
-                        for i=1:length(om)
-                            fn=om{i};
-                            ObjectMap.parseObject(col,o.(fn),[basename,fn]);
-                        end                 
-                    catch err
+                    if(~isempty(basename))
+                        basename=[basename,ObjectMap.PathSeperator];
                     end
+                    om=fieldnames(o);
+                    for i=1:length(om)
+                        fn=om{i};
+                        ObjectMap.parseObject(col,o.(fn),...
+                            [basename,fn]);
+                    end             
                 otherwise
                     % string or number. (but a value).
                     col(basename)=o;

@@ -10,12 +10,23 @@ classdef ImageScan < ExperimentCore
         ScanConfig=struct();
         StreamConfig=struct();
         StreamTrace=[]; % A value to update.
+        ScanImage=[];
         TestControl='';
+        SomeAr=[];
     end
     
     % privately set properties.
     % will not be copied to Labview.
     properties (SetAccess = private)
         PosDev=[];
+        Devices=DeviceCollection();
+    end
+    
+    % public methods accessable from labview.
+    methods
+        % initializes the experiment devices.
+        function init(exp)
+            
+        end
     end
 end
