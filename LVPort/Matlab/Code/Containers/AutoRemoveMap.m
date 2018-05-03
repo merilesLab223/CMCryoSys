@@ -25,18 +25,15 @@ classdef AutoRemoveMap < handle
     
     methods
         function o = subsref(col,id)
-            if(length(id)>1|| length(id.subs)>1)
-                   error('LVPortCollection:subsref',...
-                      'Not a supported subscript. One value as key.');
-            end      
-            t=id.type;
-            id=id.subs{1};            
-            switch(t)
+            switch(id(1).type)
+                case '.'
+                    o=builtin('subsref',col,id);
                 case '{}'
                    error('LVPortCollection:subsref',...
                       'Not a supported subscripted reference');
                 otherwise
-                    o=col.getById(id);
+                    vid=id.subs{1};                     
+                    o=col.getById(vid);
             end
         end
         

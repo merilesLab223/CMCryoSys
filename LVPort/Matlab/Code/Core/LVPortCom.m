@@ -5,7 +5,7 @@ classdef LVPortCom < handle
     properties (Access = private)
         % a collection of temporary objects to use for the mapping
         % of the object value.
-        TempObjects=AutoRemoveAutoIDCollection(60); % auto remove timeout is 1 minute.
+        TempObjects=AutoRemoveAutoIDMap(60); % auto remove timeout is 1 minute.
         LastTempAutoID=0;
         ObjectHasLoopMethod=[];
 

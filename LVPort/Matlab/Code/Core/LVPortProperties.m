@@ -4,7 +4,7 @@ classdef LVPortProperties < handle
     
     properties
         UpdateChangesDefault=false;
-        IgnoreUpdates={};
+        IgnorePropertiesOnUpdates={};
     end
     
     properties (Access = private)
@@ -52,7 +52,7 @@ classdef LVPortProperties < handle
             end
             
             % check for ignores.
-            if(any(contains(obj.IgnoreUpdates,name)))
+            if(any(contains(obj.IgnorePropertiesOnUpdates,name)))
                 return;
             end
             

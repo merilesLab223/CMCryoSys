@@ -13,12 +13,17 @@ classdef LVPortObject < handle
     properties (SetAccess = private)
         Port=[];
     end
+    
+    properties (Access = private)
+        m_port_refrence_object=[];
+    end
 
     methods
         function [p]=get.Port(obj)
-            if(isempty(obj.Port))
-                obj.Port=LVPort(obj);
+            if(isempty(obj.m_port_refrence_object))
+                obj.m_port_refrence_object=LVPort(obj);
             end
+            p=obj.m_port_refrence_object;
         end
     end
 end

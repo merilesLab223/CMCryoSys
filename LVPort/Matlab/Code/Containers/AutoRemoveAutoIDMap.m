@@ -21,12 +21,12 @@ classdef AutoRemoveAutoIDMap < AutoRemoveMap
         end
         
         % overriding to set the id.
-        function [id]=setById(col,o,id) 
-            if(~exist('id','var') || id<0)
+        function [id]=setById(col,id,o) 
+            if(~exist('id','var') || (isnumeric(id)&& id<0))
                 id=col.NextTempID();
             end
             % call base.
-            setById@AutoRemoveMap(col,o,id);
+            setById@AutoRemoveMap(col,id,o);
         end
     end
 end

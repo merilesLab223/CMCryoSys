@@ -10,7 +10,7 @@ classdef LVPort < handle & LVPortEvents & LVPortProperties & LVPortCom
             if(~isa(portObject,'LVPortObject'))
                 error('Port object must be derived from class "LVPortObject"');
             end
-            PortObject=portObject;
+            obj.PortObject=portObject;
         end
     end
     
@@ -22,32 +22,50 @@ classdef LVPort < handle & LVPortEvents & LVPortProperties & LVPortCom
     
     properties (Constant)
         % global map with auto destroy.
-        Ports=AutoRemoveMap;
+        Ports=AutoRemoveAutoIDMap(5*60);
     end
     
     % global generation methods
     methods (Static)
-        function [id,errors]=PortObjectFromCodeFile(fpath)            
-            if(~exist('fpath','var')||~ischar(fpath)||~exist(fpath,'file'))
-                if(~ischar(fpath))
-                    fpath='UNKNOWN';
+        % makes a new port.
+        function [id,hasCodePath,compileErrors]=MakePort(codepath)  
+            hasCodePath=0;
+            compileErrors='';
+            id=-1;
+            if(exist('codepath','var') && ischar(codepath))
+                if(~endsWith(codepath,'.m'))
+                    codepath=[codepath,'.m'];
                 end
-                id=-1;
-                errors=['Path "',fpath,'" not found or not a valid path'];
-                return;
+                hasCodePath=1;
             end
-            errors=[];
-            if(~exist('expID','var'))id='';end
-            [ftpath,className]=LVPort.MakePortObjectTempCodeFile(fpath);
-            id=className;
-
-            errors=[errors,checkcode(ftpath,'-string')];
-            try
-                po=eval(className);
-                LVPort.RegisterPortObject(id,po);
-            catch err
-                id=-1;
-                errors=[errors,err.message];
+            % create
+            po=[]; % just to make sure we know it;
+            if(hasCodePath)
+                try
+                    if(~exist(codepath,'file'))
+                        error(['File not found "',codepath,'"']);
+                    end
+                    
+                    [className]=LVPort.MakePortObjectTempCodeFile(codepath);
+                    compileErrors=checkcode(codepath,'-string');                    
+                    
+                    po=eval(className);
+                    if(~isa(po,'LVPortObject'))
+                        error('Port classes must derive from calss "PortObject"');
+                    end
+                catch err
+                    compileErrors=[compileErrors,err.message];
+                    id='-1';
+                    return;
+                end
+                id=className;
+            else
+                po=LVPortObject();
+            end
+            
+            [id]=LVPort.RegisterPort(id,po.Port);
+            if(isnumeric(id))
+                id=num2str(id);
             end
         end
         
@@ -87,11 +105,9 @@ classdef LVPort < handle & LVPortEvents & LVPortProperties & LVPortCom
             id=['P',lvport_hash(lower(fpath)),'C'];
         end
         
-        function [id]=RegisterPortObject(id,po)
-            LVPort.Ports(id)=p;
-            if(isprop(p,'Port'))
-                po.Port.ID=id;
-            end
+        function [id]=RegisterPort(id,port)
+            id=LVPort.Ports.setById(id,port);
+            port.ID=id;
         end
     end
 end
