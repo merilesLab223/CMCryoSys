@@ -7,10 +7,16 @@ classdef ExperimentInfo < handle
             obj.Temp=containers.Map();
         end
     end
+    
+    events
+        UpdateLoop;
+    end
+    
     properties
         ID='';
         CodeFile='';
         TempFile='';
+        UpdateLoopCallTime=0.02; %[s];
     end
     
     properties (SetAccess = protected)     
@@ -19,7 +25,10 @@ classdef ExperimentInfo < handle
     
     properties(Access = protected)
         Temp=[];
-        Events={};
+        Events=containers.Map;
+        LastAnonymousEventIndex=0;
+        UpdateLoopEventInfo=EventStruct;
+        LastUpdateLoopCallTimestamp=-1;
     end
     
     methods (Access = protected, Static)
@@ -33,23 +42,59 @@ classdef ExperimentInfo < handle
     
     % events methods
     methods
+        function PumpUpdateLoop(obj)
+            curt=now*24*60*60;
+            if(curt-obj.LastUpdateLoopCallTimestamp>obj.UpdateLoopCallTime)
+                obj.notify('UpdateLoop',obj.UpdateLoopEventInfo);
+                obj.LastUpdateLoopCallTimestamp=curt;
+            end
+        end
+        
         function [evs]=getPendingEvents(obj,clearOld)
             if(~exist('clearOld','var'))
                 clearOld=0;
             end
-            evs=obj.Events;
+            evs=obj.Events.values;
             if(clearOld)
-                obj.Events={};
+                obj.Events=containers.Map();
             end
         end
         
-        function PostEvent(obj,name,val,cat)
+        function [evid]=MakeNextAnonymousId(obj,namebase)
+            evid=[namebase,num2str(obj.LastAnonymousEventIndex)];
+            obj.LastAnonymousEventIndex=obj.LastAnonymousEventIndex+1;
+        end
+        
+        function [ev]=MakeEventStructure(obj,name,val,cat)
             ev={};
             ev.Name=name;
             ev.Category=cat;
             ev.Value=val;
-            ev.TimeStamp=now()*24*60*60; % to seconds.
-            obj.Events{end+1}=ev;
+            ev.TimeStamp=now()*24*60*60; % to seconds.            
+        end
+        
+        function [evid]=PostEvent(obj,name,val,cat,evid)
+            ev=obj.MakeEventStructure(name,val,cat);
+            if(~exist('evid','var'))
+                evid=name;
+            end
+            obj.Events(evid)=ev;
+        end
+        
+        function [evid]=PostAnonymousEvent(obj,name,val,cat)
+            evid=obj.PostEvent(name,val,cat,obj.MakeNextAnonymousId(name));
+        end
+        
+        function [ev]=GetPostedEvent(obj,evid)
+            if(~obj.Events.isKey(evid))
+                ev=[];
+                return;
+            end
+            ev=obj.Events(evid);
+        end
+        
+        function [evNames]=GetCurrentPostedEventIds(obj)
+            evNames=obj.Events.keys;
         end
     end
     

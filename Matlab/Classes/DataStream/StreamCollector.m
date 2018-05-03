@@ -8,21 +8,29 @@ classdef StreamCollector< handle & DataStream
         end
     end
     
+    events
+        DataReady;
+    end
+    
     properties
-        IntegrateDT=1;
         CollectDT=3000; % in timebase.
+        UpdateDT=100; % in timebase.
+        PadZeros=false; % in timebase.
     end
     
     properties (SetAccess = protected)
         Data=[0;0];
-        MeanV=0;
+        MeanV=0; % in timebase units.
+        CountsPerTimebase=0;
         Timestamps=[0;0];
         LastReadTimestamp=-1;
+        LastUpdateTimestamp=-1;
     end
     
     properties (Access = protected)
         StreamT=[];
         StreamData=[];
+        DataReadyEventObj=EventStruct;
     end
     
     methods
@@ -35,6 +43,27 @@ classdef StreamCollector< handle & DataStream
         	obj.StreamT=[];
             obj.StreamData=[];
         end
+        
+        function [data,dt]=getData(obj)
+            data=obj.StreamData;
+            ts=obj.StreamT;
+            dt=1;
+            if(isempty(ts))
+                return;
+            end
+            if(length(ts)>1)
+                dt=ts(2)-ts(1);
+            end
+            if(obj.PadZeros)
+                N=ceil(obj.CollectDT/dt);
+                sdata=size(data);
+                missing=N-sdata(1);
+                if(missing>0)
+                    data=[zeros(missing,1);data];
+                    ts=[ones(missing,1)*ts(1);ts];
+                end
+            end
+        end
     end
     
     methods (Access = protected)
@@ -43,7 +72,16 @@ classdef StreamCollector< handle & DataStream
                 obj.MeanV=0;
                 return;
             end
-            obj.MeanV=mean(e.Data);
+            %return;
+            %obj.MeanV=mean(e.Data);
+            
+            if(length(e.TimeStamps)>1)
+                deltaT=e.TimeStamps(end)-e.TimeStamps(1);
+                %obj.CountsPerTimebase=sum(e.Data)*obj.getTimebase()/deltaT;
+            else
+                obj.CountsPerTimebase=1;
+            end
+            
             ts=obj.StreamT;
             data=obj.StreamData;
             
@@ -59,7 +97,7 @@ classdef StreamCollector< handle & DataStream
             else
                 ts(end+1:end+dlen)=e.TimeStamps;
             end
-
+            
             if(~isempty(ts))
                 % finding the locaiton where to slice.
                 offset=(ts(end)-obj.CollectDT); % from end
@@ -74,14 +112,14 @@ classdef StreamCollector< handle & DataStream
             obj.StreamT=ts;
             obj.StreamData=data;
             obj.Data=data;
-            obj.Timestamps=ts;            
+            obj.Timestamps=ts;        
             
-            if(obj.IntegrateDT>0 && ~isempty(ts))
-                [ts,data]=StreamToTimedData([ts,data],...
-                    obj.timebaseToSeconds(obj.IntegrateDT));
+            curT=obj.nowInTimebase();
+            obj.LastReadTimestamp=curT;
+            if(curT-obj.LastUpdateTimestamp>obj.UpdateDT)
+                obj.LastUpdateTimestamp=curT;
+                obj.notify('DataReady',obj.DataReadyEventObj);
             end
-            
-            obj.LastReadTimestamp=now*24*60*60./obj.timeUnitsToSecond;
         end
     end
 end

@@ -9,7 +9,6 @@ classdef ObjectMap < handle
     end
     
     % fast get meta info.
-    
     methods(Static)
         
         % returns the type to be associated with the object for the object tree
@@ -64,12 +63,16 @@ classdef ObjectMap < handle
         % real, complex, real matrix, complex matrix, string, bool (logical)            
         function [namePaths,vals] = map(o,basename)
             if(~exist('basename','var'))basename='';end
-            basename=strtrim(basename);
-            col=containers.Map;
-
-            ObjectMap.parseObject(col,o,basename);
+            col=ObjectMap.mapToCollection(o,basename);
             namePaths=col.keys;
             vals=col.values;
+        end
+        
+        function [col]=mapToCollection(o,basename)
+            col=containers.Map;
+            if(~exist('basename','var'))basename='';end
+            basename=strtrim(basename);
+            ObjectMap.parseObject(col,o,basename);
         end
         
         % either updates or constructs a new object according to the map.
@@ -113,8 +116,8 @@ classdef ObjectMap < handle
         % update a sepcific value of an object given a namepath
         % and a value.
         function [o,wasUpdated]=update(o,namepath,val)
-            namepathAr=strsplit(namepath,ObjectMap.PathSeperator);
-            [o,wasUpdated]=ObjectMap.updateByPath(o,namepathAr,val,1);
+            nameparts=ObjectMap.fastSplitPathSeperator(namepath);
+            [o,wasUpdated]=ObjectMap.updateByPath(o,nameparts,val,1);
         end
         
         
@@ -129,8 +132,8 @@ classdef ObjectMap < handle
                 val=[];
             end
             
-            namepathAr=strsplit(namepath,ObjectMap.PathSeperator);
-            [v,hasval]=ObjectMap.findValue(o,namepathAr,1);
+            nameparts=strsplit(namepath,ObjectMap.PathSeperator);
+            [v,hasval]=ObjectMap.findValue(o,nameparts,1);
             if(hasType&&~strcmp(ObjectMap.getType(v),to))
                 return;
             end
@@ -142,11 +145,34 @@ classdef ObjectMap < handle
     end
     
     methods(Static, Access = protected)
-        function [rt,hasval]=findValue(o,namepathAr,i)
+
+        function [nameparts]=fastSplitPathSeperator(namepath)
+            idxs=find(namepath==ObjectMap.PathSeperator)-1;
+            if(isempty(idxs))
+                nameparts=cell(1,1);
+                nameparts{1}=namepath;
+                return;
+            end
+            ln=length(namepath);
+            if(ln>idxs(end))
+                idxs=[idxs,ln];
+            end
+            
+            % setting the names.
+            ln=length(idxs);
+            nameparts=cell(ln,1);
+            last=1;
+            for i=1:ln
+                nameparts{i}=namepath(last:idxs(i));
+                last=idxs(i)+2;
+            end
+        end
+        
+        function [rt,hasval]=findValue(o,nameparts,i)
             hasval=0;
             rt=[];   
             
-            if(i>length(namepathAr))
+            if(i>length(nameparts))
                 % reached path end, o is the value.
                 % has to be.
                 rt=o;
@@ -156,7 +182,7 @@ classdef ObjectMap < handle
             
             % Geting the type of the object to check for.
             to=ObjectMap.getType(o);
-            namepart=namepathAr{i};
+            namepart=nameparts{i};
 
             switch(to)
                 case 'unconvertable'
@@ -168,13 +194,13 @@ classdef ObjectMap < handle
                     if(idx<1 || length(o)<idx)
                         return;
                     end
-                    [rt,hasval]=ObjectMap.findValue(o{idx},namepathAr,i+1);
+                    [rt,hasval]=ObjectMap.findValue(o{idx},nameparts,i+1);
                 case 'sarray'
                     idx=str2num(namepart)+1;
                     if(idx==0 || length(o)<idx)
                         return;
                     end
-                    [rt,hasval]=ObjectMap.findValue(o(idx),namepathAr,i+1);
+                    [rt,hasval]=ObjectMap.findValue(o(idx),nameparts,i+1);
                 case 'object'
                     if(~isvarname(namepart))
                         % if the variables must be trucked (thire name)
@@ -185,9 +211,9 @@ classdef ObjectMap < handle
                     if(~isfield(o,namepart))
                         return;
                     end
-                    [rt,hasval]=ObjectMap.findValue(o.(namepart),namepathAr,i+1);
+                    [rt,hasval]=ObjectMap.findValue(o.(namepart),nameparts,i+1);
                 otherwise
-                   if(length(namepathAr)==i)
+                   if(length(nameparts)==i)
                        rt=o;
                        hasval=1;
                    else
@@ -197,20 +223,20 @@ classdef ObjectMap < handle
             end
         end
         
-        function [rt]=isNamePartAnArrayIndex(namepathAr,i)
+        function [rt]=isNamePartAnArrayIndex(nameparts,i)
             rt=0;
-            if(length(namepathAr)>=i)
-                namepart=namepathAr{i};
+            if(length(nameparts)>=i)
+                namepart=nameparts{i};
                 if(~isempty(namepart))
                     rt=isstrprop(namepart(1),'digit');
                 end
             end
         end
         
-        function [o,wasUpdated]=updateByPath(o,namepathAr,val,i)
+        function [o,wasUpdated]=updateByPath(o,nameparts,val,i)
             wasUpdated=0; 
             
-            if(i>length(namepathAr))
+            if(i>length(nameparts))
                 % reached path end, o is the value
                 wasUpdated=1;
                 o=val;
@@ -218,8 +244,8 @@ classdef ObjectMap < handle
             end
             
             % check if next is an index.
-            isArrayIndex=ObjectMap.isNamePartAnArrayIndex(namepathAr,i);
-            namepart=namepathAr{i};
+            isArrayIndex=ObjectMap.isNamePartAnArrayIndex(nameparts,i);
+            namepart=nameparts{i};
             
             % checking if the current object matches the needed value type.
             to=ObjectMap.getType(o);
@@ -237,7 +263,7 @@ classdef ObjectMap < handle
                             ival=o(idx);
                         end
                         
-                        [ival,wasUpdated]=ObjectMap.updateByPath(ival,namepathAr,val,i+1);
+                        [ival,wasUpdated]=ObjectMap.updateByPath(ival,nameparts,val,i+1);
                         o(idx)=ival;
                     otherwise
                         ival=[];
@@ -250,21 +276,30 @@ classdef ObjectMap < handle
                             o={};
                         end
 
-                        [ival,wasUpdated]=ObjectMap.updateByPath(ival,namepathAr,val,i+1);
+                        [ival,wasUpdated]=ObjectMap.updateByPath(ival,nameparts,val,i+1);
                         o{idx}=ival;
                         return;
                 end
             else
                 % should be an object (otherwise already dealt with;
-                ival=[];
-                isAnArray=ObjectMap.isNamePartAnArrayIndex(namepathAr,i+1);
+                isAnArray=ObjectMap.isNamePartAnArrayIndex(nameparts,i+1);
                 updateToSelf=isempty(namepart);
-
+                
+                if(~isvarname(namepart))
+                    % if the variables must be trucked (thire name)
+                    % would mean that you cannot update this variable
+                    % back to labview.
+                    namepart(~isstrprop(namepart,'alphanum'))='_';
+                end
+                
                 if(updateToSelf)
                     ival=o;
                 elseif(isfield(o,namepart))
                     ival=o.(namepart);
                     to=ObjectMap.getType(ival);
+                else
+                    ival=struct();
+                    to='object';
                 end
                 
                 % check for construct.
@@ -276,12 +311,17 @@ classdef ObjectMap < handle
                     ival=struct();
                 end
                 
-                if(updateToSelf)
-                    [o,wasUpdated]=ObjectMap.updateByPath(ival,namepathAr,val,i+1); 
-                else
-                    [o.(namepart),wasUpdated]=ObjectMap.updateByPath(ival,namepathAr,val,i+1); 
+                if(~(isstruct(o) || iscell(o))&&~isprop(o,namepart))
+                    % cannot update a class without the right name
+                    % parameter.
+                    return;
                 end
-
+                
+                if(updateToSelf)
+                    [o,wasUpdated]=ObjectMap.updateByPath(ival,nameparts,val,i+1); 
+                else
+                    [o.(namepart),wasUpdated]=ObjectMap.updateByPath(ival,nameparts,val,i+1); 
+                end
             end  
         end
         
@@ -298,7 +338,7 @@ classdef ObjectMap < handle
                     end
                     if(~isempty(basename))
                         basename=[basename,ObjectMap.PathSeperator];
-                    end                       
+                    end                 
                     l=numel(o);
                     for i=1:l
                         % note -1 is since matlab index start from 1
@@ -312,14 +352,14 @@ classdef ObjectMap < handle
                     end
                     if(~isempty(basename))
                         basename=[basename,ObjectMap.PathSeperator];
-                    end                    
+                    end          
                     l=numel(o);
                     for i=1:l
                         % note -1 is since matlab index start from 1
                         % and we want to convert to another lang.
                         newname=[basename,num2str(i-1)];
                         ObjectMap.parseObject(col,o(i),newname);
-                    end    
+                    end
                 case 'object'
                     if(~isempty(basename))
                         basename=[basename,ObjectMap.PathSeperator];
@@ -329,13 +369,30 @@ classdef ObjectMap < handle
                         fn=om{i};
                         ObjectMap.parseObject(col,o.(fn),...
                             [basename,fn]);
-                    end             
+                    end        
                 otherwise
                     % string or number. (but a value).
                     col(basename)=o;
             end
         end
         
+    end
+    
+    % testing methods.
+    methods (Static)
+        
+        function [o]=testUpdate(o,namepath,val,n)
+            if(~exist('n','var'))n=1000;end;
+            if(~exist('namepath','var'))namepath='a@b@c@d';end
+            if(~exist('val','var'))val=eye(1000);end
+            
+            tic;
+            for i=1:n
+                o=ObjectMap.update(o,namepath,val);
+            end
+            totalT=toc;
+            disp(['Total set time (single): ',num2str(totalT*1000./n),' [ms]']);            
+        end
     end
 
 end

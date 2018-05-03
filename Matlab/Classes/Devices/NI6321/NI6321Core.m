@@ -25,28 +25,38 @@ classdef NI6321Core < Device & TimeBasedObject
         niDevID=[];
         
         externalClockTerminal='';
+        ThrowErrors=false;
     end
     
     properties (SetAccess = private)
         IsDeleted=false;
         BatchHandle=[];
         LastStopTime=-1;
+        IsRunning=[];
     end
     
     % methods for NI card.
     methods
+        function [rt]=get.IsRunning(obj)
+            rt=false;
+            if(~isempty(obj.niSession))
+                rt=obj.niSession.IsRunning;
+            end
+        end
         function []=stop(obj)
             s=obj.niSession;
             if(~s.IsRunning)
-                disp('Called stop on a non running session.');
+                %disp('Called stop on a non running session.');
                 return;
             end
+            fprintf(['Stopping session of ',class(obj),'...']);
             %if(s.Trig
             s.stop();
-            wait(s);
+            %wait(s);
             s.release();
-            wait(s);
+            %wait(s);
             obj.LastStopTime=now;
+            fprintf(['Done.',newline]);
         end
         
         function [rslt]=hasExternalClock(obj)
@@ -125,10 +135,13 @@ classdef NI6321Core < Device & TimeBasedObject
         end
         
         function []=onNIError(obj,s,e)
-            warning('Found ni error while executing:');
-            %obj.stop();
-            %disp(getReport(e.Error, 'extended', 'hyperlinks', 'on' ));
-            error(e.Error);%obj.notify('NIError',e);
+            %warning();
+            msg=['Found ni error while executing:',newline,e.Error.message];
+            if(obj.ThrowErrors)
+                error(msg);
+            else
+                disp(msg);
+            end
         end
     end
     

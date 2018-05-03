@@ -1,35 +1,38 @@
-% make the counter.ctr
-% if(exist('ctr','var'))
-%     ctr.stop();
+% make the counter.reader
+% if(exist('reader','var'))
+%     reader.stop();
 %     trigger.stop();
-%     clear ctr;
+%     clear reader;
 %     clear trigger;
 % end
 clear all;
+useAnalog=1;
 
-ctr=NI6321Counter('Dev1');
-clock=NI6321Clock('Dev1');
-trigger=NI6321TTLGenerator('Dev1');
+% pos.xchan='ao0';
+% pos.ychan='ao1';
+clock.ctrName='ctr3';
+clockTerm='pfi14';
+triggerTerm=clockTerm;
 
-triggerTerm='PFI0';
-clockTerm='PFI14';
+% pos.triggerTerm=triggerTerm;
 
-clock.ctrName='ctr3'; % always running.
-clock.triggerTerm=triggerTerm;
+if(useAnalog)
+    reader.triggerTerm=triggerTerm;
+    reader.readchan='ai0';
+else
+    reader.ctrName='ctr0';
+end
 
-ctr.ctrName='ctr0';
-ctr.externalClockTerminal=clockTerm;
-%ctr.triggerTerm=triggerTerm;
+reader.externalClockTerminal=clockTerm;
 
-trigger.ttlchan='port0/line1';
-%trigger.externalClockTerminal=clockTerm;
-% port0/line1 ->USER1 ->PFI0;
+% adding measurement reader.
+dcol=TimedDataCollector(reader);
 
 %% configure and run.
-%ctr.Rate=ctr.clockFreq=1e5;
-% ctr.cchan='';
-% ctr.clockterm='';
-ctr.configure();
+%reader.Rate=reader.clockFreq=1e5;
+% reader.cchan='';
+% reader.clockterm='';
+reader.configure();
 clock.configure();
 trigger.configure();
 disp('Configured');
@@ -40,21 +43,21 @@ trigger.clear();
 trigger.Pulse(10,10);
 
 %% add input channel.
-ctr.addlistener('DataReady',@(s,e)plot(e.TimeStamps,e.Data));
+reader.addlistener('DataReady',@(s,e)plot(e.TimeStamps,e.Data));
 
 %% prepare the counters.
-ctr.prepare();
+reader.prepare();
 clock.prepare();
 trigger.prepare();
 disp('Prepared');
 
 %% run.
-ctr.run();
+reader.run();
 clock.run();
 trigger.run();
 disp('Running...');
 
 pause(2);
-ctr.stop();
+reader.stop();
 clock.stop();
 disp('Complete');

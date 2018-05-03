@@ -34,6 +34,9 @@ classdef TimeBasedObject < handle
         
         % move the time to nearest values.
         function toRounded(obj,duration)
+            if(~exist('duration','var'))
+                duration=obj.getTimebase();
+            end
             obj.curT=duration*ceil(obj.curT/duration);
         end
     end
@@ -50,6 +53,10 @@ classdef TimeBasedObject < handle
         
         function t=timebaseToSeconds(obj,t)
             t=t*obj.timeUnitsToSecond;
+        end
+        
+        function [t]=nowInTimebase(obj)
+            t=now*24*60*60./obj.timeUnitsToSecond;
         end
     end
 end

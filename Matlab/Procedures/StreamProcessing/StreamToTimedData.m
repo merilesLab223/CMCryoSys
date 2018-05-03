@@ -32,8 +32,10 @@ function [t,strm] = StreamToTimedData(rslts,tbin,dt)
         end
         t=t';
     else
-        t=rslts(:,1);
-        strm=rslts(:,2:end);
+        strm=rslts(1:end-1);
+        t=[1:max(size(strm))].*dt;
+        %t=rslts(:,1);
+        %strm=rslts(:,2:end);
     end
     
     if(isempty(t))

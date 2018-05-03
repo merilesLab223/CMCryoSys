@@ -1,4 +1,4 @@
-function h = hash(inp,meth)
+function h = lvport_hash(inp,meth)
 % HASH - Convert an input variable into a message digest using any of
 %        several common hash algorithms
 %

@@ -38,6 +38,7 @@ classdef TimedDataCollector < handle & DataStream
         TimestampRateToExternalClockRatio=-1;
         LastCollectedTimestamp=0;
         LastResultsMeasured=0;
+        MeasurementCompletedTimePrecentage=0;
     end
     
     % timebinned measurement definitions.
@@ -53,9 +54,16 @@ classdef TimedDataCollector < handle & DataStream
         compleatedBins=[];
     end
     
+    % attribute getters.
+    methods
+        function [rt]=get.MeasurementCompletedTimePrecentage(obj)
+            rt=100*obj.CurrentMeasurementDuration./obj.Duration;
+        end        
+    end
+    
     % called when data is ready.
     methods (Access = protected)
-        
+
         % converst the data timestamps to valid data ranges. 
         function [vts,tOffset]=shiftTimestampsToValidRange(obj,ts)
             vts={};
@@ -101,8 +109,10 @@ classdef TimedDataCollector < handle & DataStream
             if(~obj.IsMeasurementValid)obj.prepare();end
             if(obj.Duration==0)return;end
             
-            obj.CurrentMeasurementDuration=...
-                (now-obj.MeasurementStartTS)*24*60*60;
+            if(~isempty(e.TimeStamps))
+                obj.CurrentMeasurementDuration=...
+                    (e.TimeStamps(end)-obj.MeasurementStart);
+            end
 
             % if not continues then nothing to do here.
             if(~obj.IsContinues)
@@ -203,6 +213,7 @@ classdef TimedDataCollector < handle & DataStream
             obj.Results={};
             obj.ResultsMap=[];
             obj.clearPendingData();
+            obj.resetMeasurementTimebinData();
         end
         
         function [ct]=getRawPendingTickCount(obj)

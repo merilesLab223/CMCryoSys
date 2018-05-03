@@ -1,45 +1,53 @@
 %% call to test read the counts in the system.
-if(exist('stopall','var'))stopall();end;
-clear;
+daq.reset;
+clear reader;
+clear clock;
 
 %% Configure
-
-counter=NI6321Counter('Dev1');
-clock=NI6321Clock('Dev1');
 abort=0;
+useAnalog=1;
 
 % hard connections.
 % port0/line1 ->USER1 ->PFI0 : Trigger.
 % pfi15->pfi14 : Clock loopback.
-% pfi8 (counter 0)->User2 : counter input)
+% pfi8 (reader 0)->User2 : reader input)
 
-counter.ctrName='ctr0';
+if(useAnalog)
+    reader=NI6321AnalogReader('Dev1');
+    reader.readchan='ai0';
+else
+    reader=NI6321Counter('Dev1');
+    reader.ctrName='ctr0';
+end
+
+clock=NI6321Clock('Dev1');
 clock.ctrName='ctr3';
 
 clockTerm='pfi14';
 triggerTerm=clockTerm;
-counter.externalClockTerminal=clockTerm;
+reader.externalClockTerminal=clockTerm;
+
 clockrate=1e4;
 clock.setClockRate(clockrate);
 clock.clockFreq=clockrate*2;
-counter.setClockRate(clock.clockFreq);
+reader.setClockRate(clock.clockFreq);
 
 %% configure
-counter.configure();
+reader.configure();
 clock.configure();
 
 %% Data colelctor.
-dcol=TimedDataCollector(counter);
-dcol.Measure(1000);
-dcol.IsContinues=true;
+streamCol=StreamCollector(reader);
+streamCol.setClockRate(clockrate);
+%streamCol.IsContinues=true;
 
 %% Stat system
-counter.prepare();
+reader.prepare();
 clock.prepare();
-counter.run();
-
+reader.run();
 clock.run();
 
+streamCol.start();
 %% reading data.
 % while(abort==0)
 %     pause(0.1);
@@ -47,10 +55,8 @@ clock.run();
 %     plot([t,strm]);
 % end
 %dcol.stop();
-tm=timer('TimerFcn',...
-    @(s,e)multifun(@()DisplayScanAsStream(dcol.Results)),...
-    'Period',0.3,'ExecutionMode','fixedDelay');
-stopall=@()multifun(@()counter.stop(),@()clock.stop(),@()stop(tm));
+subplot(1,1,1);
+streamCol.addlistener('DataReady',@(s,e)DisplayScanAsStream(streamCol));
+stopall=@()multifun(@()reader.stop(),@()clock.stop());
 
-start(tm);
 % clock.stop;

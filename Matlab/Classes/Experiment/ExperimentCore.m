@@ -40,7 +40,8 @@ classdef ExperimentCore < handle
         end
         
         % A function to be called when the data is upated.
-        function update(obj,name,varargin)
+        function [evid]=update(obj,name,varargin)
+            evid='[No event called]';
             if(~exist('name','var'))
                 name=fieldnames(obj);
             end
@@ -50,6 +51,8 @@ classdef ExperimentCore < handle
                     for i=1:length(name)
                         obj.update(name{i},varargin{:});
                     end
+                    % updating all.
+                    return;
                 else
                     name=name{1};
                 end
@@ -70,27 +73,31 @@ classdef ExperimentCore < handle
                 val=varargin(:);
             end
             
-            tempid=obj.ExpInfo.SetTemp(val);
-            obj.ExpInfo.PostEvent('mUpdateExperimentParameter',struct(...
-                'name',name,'tempid',tempid),'matlab');
-        end
-    end
-    
-    methods (Access = protected)
-        % call to update a specific field.
-        function Update(obj,fid)
-            if(exist('fid','var'))
-                obj.Post('updateField',fid);
-            else
-                obj.Post('updateAllFields','');
+            evid=['mUpdateExperimentParameter_',name];
+
+            ev=obj.ExpInfo.GetPostedEvent(evid);
+            if(~isempty(ev) && isfield(ev,'tempid'))
+                tempid=ev.tempid;
+                obj.ExpInfo.SetTemp(val,ev.tempid);
+            else % need new temp (if not null).
+                tempid=obj.ExpInfo.SetTemp(val);
             end
+            
+            obj.ExpInfo.PostEvent('mUpdateExperimentParameter',struct(...
+                'name',name,'tempid',tempid),'matlab',evid);
         end
         
         % call to notify the client of a specific event.
         function Post(obj,ev,strdata)
-            if(~exist('strdata','var'))strdata='';end
-            obj.ExpInfo.postedEvents{end+1}=struct('name',ev,'data',strdata);
-        end
+            if(~exist('strdata','var'))
+                strdata='';
+            end
+            obj.ExpInfo.PostEvent(ev,struct('name',ev,'data',strdata));
+        end        
+    end
+    
+    methods (Access = protected)
+
     end
     
     methods (Static) % Events
@@ -202,7 +209,7 @@ classdef ExperimentCore < handle
         end
         
         function [expID]=PathToExperimentID(fpath)
-            expID=['Exp',hash(lower(fpath)),'C'];
+            expID=['Exp',lvport_hash(lower(fpath)),'C'];
         end
     end
     
@@ -222,7 +229,7 @@ classdef ExperimentCore < handle
                 ExperimentCore.ClearTempField(expID,argTempIdx);
             end
             
-            nargs=nargout_for_class(exp,name);
+            nargs=lvport_nargout_for_class(exp,name);
             if(nargs==0)
                 exp.(name)(iargs{:});
                 return;
@@ -272,7 +279,7 @@ classdef ExperimentCore < handle
                 % updating.
                 exp.(pname)=data.(pname);
                 rt=1;
-            end                
+            end            
         end
         
         function [pnames]=ListExperimentProperties(expID)
@@ -291,7 +298,6 @@ classdef ExperimentCore < handle
             pnames=setdiff(properties(exp),bprops);
             pnames=strjoin(pnames,',');
         end
-        
     end
     
     properties (Constant, Access = private)
@@ -425,7 +431,10 @@ classdef ExperimentCore < handle
             vs=size(val);
             vs=vs(end:-1:1);
             if(isnumeric(val) && numel(val)>1)
-                val=reshape(double(val),[1,numel(val)]);
+                if(~isa(val,'double'))
+                    val=double(val);
+                end
+                val=reshape(val,[1,numel(val)]);
             end
         end
     end
@@ -444,20 +453,78 @@ classdef ExperimentCore < handle
             if(~iscell(evs))
                 evs={evs};
             end
-            if(isempty(evs))
-                return;
-            end
-            for i=1:length(evs)
-                val=evs{i}.Value;
-                if(isempty(val))
+            if(~isempty(evs))
+                for i=1:length(evs)
+                    val=evs{i}.Value;
+                    if(isempty(val))
+                        evs{i}.Value=[];
+                        continue;
+                    end
+                    evs{i}.DataIndex=exp.ExpInfo.SetTemp(evs{i}.Value);
                     evs{i}.Value=[];
-                    continue;
                 end
-                evs{i}.DataIndex=exp.ExpInfo.SetTemp(evs{i}.Value);
-                evs{i}.Value=[];
+                [tid]=exp.ExpInfo.SetTemp(evs);
             end
-            [tid]=exp.ExpInfo.SetTemp(evs);
+            
+            exp.ExpInfo.PumpUpdateLoop();
         end
         
     end    
+    
+    % debug
+    methods
+        function debugStoreCurrentStateToDisk(exp,ignoreList)        
+            m=containers.Map;
+            m('ExpInfo')=true;
+            if(exist('ignoreList','var'))
+                if(ischar(ignoreList))
+                    ignoreList={ignoreList};
+                end
+                for i=1:length(ignoreList)
+                    m(ignoreList{i})=true;
+                end
+            end
+            
+            data=struct();
+            fns=fieldnames(exp);
+
+            for i=1:length(fns)
+                if(m.isKey(fns{i}))
+                    continue;
+                end
+                data.(fns{i})=exp.(fns{i});
+            end
+            disp('Ignored:');
+            disp(ignoreList');
+            disp('Storing:');
+            disp(fieldnames(data));
+            save([exp.ExpInfo.CodeFile,'.mat'],'data');
+            disp('ok.');
+        end
+        
+        function debugLoadStoredStateFromDisk(exp,filename)
+            if(~exist('filename','var'))
+                filename=[exp.ExpInfo.CodeFile,'.mat'];
+            end
+            
+            disp(['Loading ',filename,'...']);
+            data=load(filename);
+            data=data.data;
+            
+            fns=fieldnames(data);
+            
+            for i=1:length(fns)
+                if(~isprop(exp,fns{i}))
+                    disp([fns{i},' Skipped no prop.']);
+                    continue;
+                end
+                disp([fns{i},' OK.']);
+                try
+                exp.(fns{i})=data.(fns{i});
+                catch err
+                    warning(err.message);
+                end
+            end
+        end
+    end
 end

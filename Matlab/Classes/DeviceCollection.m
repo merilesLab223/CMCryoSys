@@ -12,6 +12,7 @@ classdef DeviceCollection < handle
         % all devices by name.
         devices=struct;
         roles=struct;
+        allowedRoles=struct;
     end
     
     methods
@@ -40,6 +41,25 @@ classdef DeviceCollection < handle
     end
     
     methods
+        function []=set(obj,name,dev,role)
+           if(~ischar(name))
+               error('a device must have a name which is string.  Param "name"');
+           end
+           if(exist('role','var')) % case of [name, role, dev].
+               dump=dev;
+               dev=role;
+               role=dump;
+           else
+               role=[];
+           end
+           if(~isobject(dev)) 
+               error('Device not found. Please provide a device object. Param "dev"');
+           end
+           obj.setDevice(name,dev);
+           if(~isempty(role))
+               obj.setRole(role,name);
+           end
+        end
         function []=setDevice(obj,name,dev)
            if(~ischar(name))
                error('a device must have a name which is string.  Param "name"');

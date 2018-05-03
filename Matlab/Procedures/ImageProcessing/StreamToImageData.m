@@ -1,8 +1,10 @@
-function [img] = StreamToImageData(rslt,coln,rown,dwellTime,preview)
+function [img,updatedIdxs] = StreamToImageData(rslt,coln,rown,dwellTime,multidir)
     % splicing according to dwell time.
-    if(~exist('preview','var'))preview=0;end
-    
+    if(~exist('multidir','var'))multidir=0;end
+    % do not update anything, create zero image.
     img=zeros(coln,rown);
+    updatedIdxs=[];
+    
     comp=[];
     tlen=0;
     blen=length(rslt);
@@ -47,20 +49,14 @@ function [img] = StreamToImageData(rslt,coln,rown,dwellTime,preview)
     
     ticksPerPixel=round(tlen*dwellTime/deltaT);
     tic;
-    if(ticksPerPixel<1 || preview)
+    if(ticksPerPixel<1)
         % case we are missing data.
         % case we are missing data.
         ts=imgvector(:,1);
         ts=ts(ts>=minT & ts<deltaT);
         ts=round(ts./dwellTime)+1;
-%         if(length(ts)>coln*rown)
-%             [ts,uidxs]=unique(ts);
-%             ts=ts(1:coln*rown);
-%             uidxs=uidxs(1:coln*rown);
-%         end
-        % finding the nearest.
+        updatedIdxs=1:(coln*rown);
         img(ts)=imgvector(1:length(ts),2);
-        
     else
         curPixel=floor(tlen/ticksPerPixel);
         if(curPixel>coln*rown)
@@ -68,33 +64,18 @@ function [img] = StreamToImageData(rslt,coln,rown,dwellTime,preview)
         end
         totalPixels=curPixel*ticksPerPixel;
         
-        if(ticksPerPixel==1)
-            img(1:curPixel)=imgvector(1:totalPixels,2);
-        else
-            img(1:curPixel)=sum(reshape(imgvector(1:totalPixels,2),ticksPerPixel,curPixel));
-        end
+        updatedIdxs=1:curPixel;
         
-%     else
-%         data=imgvector(:,2);
-%         tbins=(1:(coln*rown))*dwellTime;        
-%         % case we have more or eual data.
-%         ts=floor(imgvector(:,1)./dwellTime)+1;
-%         lt=length(ts);
-%         tsi=1;
-%         ltsi=1;
-%         
-%         for i=1:length(tbins)
-%             if(tsi>lt)break;end
-%             while(ts(tsi)<tbins(i))
-%                 tsi=tsi+1;
-%                 if(tsi>lt)break;end
-%             end
-%             dat=data(ltsi:tsi);
-%             img(i)=sum(dat);
-%             tsi=tsi+1;
-%             ltsi=tsi;
-%         end
+        if(ticksPerPixel==1)
+            img(updatedIdxs)=imgvector(1:totalPixels,2);
+        else
+            img(updatedIdxs)=sum(reshape(imgvector(1:totalPixels,2),ticksPerPixel,curPixel));
+        end
     end
     comp(end+1)=toc;
+    
+    if(multidir)
+        img(:,2:2:end)=img(end:-1:1,2:2:end);
+    end
 end
 

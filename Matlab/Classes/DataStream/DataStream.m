@@ -57,9 +57,6 @@ classdef DataStream < handle & TimeBasedObject
                 obj.DataReadyEventListner.Enabled=0;
             end
         end
-        
-        function clearEvents(obj)
-        end
     end
 end
 

@@ -6,7 +6,10 @@ classdef Positioner2D < TimeBasedSignalGenerator
         % A number or a function that describes the position
         % values to scaling values. 
         % Example: 
-        positionScaling=1;
+        PositionTOVoltageUnits=[1,1];
+        
+        % if true invers the x and y positions.
+        InvertXY=false;
         
         % the interpolation method to be used between the data
         % points. See interp1 for more info.
@@ -38,6 +41,17 @@ classdef Positioner2D < TimeBasedSignalGenerator
                 % only x and y. Minimal timeframe assummed.
                 t=([0:length(x)-1])*obj.getTimebase();
             end
+            obj.toRounded();
+            
+            x=x.*obj.PositionTOVoltageUnits(1);
+            y=y.*obj.PositionTOVoltageUnits(2);
+            
+            if(obj.InvertXY)
+                dump=x;
+                x=y;
+                y=dump;
+            end
+            
             data=struct('x',x,'y',y,'t',t,'method',method);
             obj.appendSequence(data,max(t)-t(1));
         end

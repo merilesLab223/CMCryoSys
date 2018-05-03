@@ -6,4 +6,6 @@ LabViewSYSTEMAPIStartTime=now;
 
 % VERY IMPORTANT, Pause in labview will cause access violation
 % between the diffrent running threads. DO NOT USE PAUSE.
-pause off;
+pause off; 
+
+%% OLD ISSUES (64 bit?)

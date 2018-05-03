@@ -12,11 +12,11 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
     properties
         xchan='ao0';
         ychan='ao1';
-
-        %niXChannel=[];
-        %niYChannel=[];
-        
         totalExecutionTime=0;
+    end
+    
+    properties(SetAccess = protected)
+        ChannelVolategeRange=[-10,10];
     end
     
     properties (Access = protected)
@@ -30,13 +30,8 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
             % find the NI devie.
             obj.validateSession();
             s=obj.niSession;
-            %s.IsContinuous=true;
-            % adding channels.
-            %obj.niXChannel=...
-                s.addAnalogOutputChannel(obj.niDevID,obj.xchan,'Voltage');
-            %obj.niYChannel=...
-                s.addAnalogOutputChannel(obj.niDevID,obj.ychan,'Voltage');
-            
+            s.addAnalogOutputChannel(obj.niDevID,obj.xchan,'Voltage');
+            s.addAnalogOutputChannel(obj.niDevID,obj.ychan,'Voltage');
         end
     end
     
@@ -56,18 +51,9 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
                 return;
             end
             
-%             sdata=size(data);
-%             if(sdata(1)<obj.Rate)
-%                 % at least the amout of the rate.
-%                 missing=obj.Rate-sdata(1);
-%                 data=[data,
-%             end
-            
             s.queueOutputData(data);
-            %s.queueOutputData([0,0]);
 
             % prepare the session.
-            %s.stop();
             s.prepare();
             disp('pos prepared');
         end
@@ -108,6 +94,15 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
             for i=1:length(timestamps)
                 idata=data{i};
                 
+%                 lastT=0;
+%                 lastXv=0;
+%                 lastYv=0;
+%                 
+%                 if(~isempty(t))
+%                     lastT=t(end);
+%                     lastV=v(end);
+%                 end
+                
                 tv=timestamps(i)+idata.t; % current time vector.
                 tspan=min(tv):obj.getTimebase():max(tv);
                 lt=length(tspan);
@@ -117,13 +112,19 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
                     continue;
                 end
                 if(lt>1)
-%                     tic;
                     xv=interp1(tv,idata.x,tspan,idata.method);
                     yv=interp1(tv,idata.y,tspan,idata.method);      
-%                     comp(end+1)=toc;
                 else
                     xv=idata.x;
                     yv=idata.y;
+                end
+                
+                % nothting.
+                if(isempty(t) && tspan(1)>0)
+                    xv=[xv(1),xv];
+                    yv=[yv(1),yv];
+                    tspan=[0,tspan];
+                    lt=lt+1;
                 end
                 
                 % appending
@@ -134,10 +135,7 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
             end
             
             % appeding current time if needed.
-%             tic;
             [maxt,maxti]=max(t);
-%             comp(end+1)=toc;
-            
             if(maxt<obj.curT)
                 % need to extend the time.
                 t(end+1)=obj.curT;
@@ -146,24 +144,30 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
             end
 
             % remove duplicates.
-%             tic;
             [t,sidx]=unique(t,'last');
             x=x(sidx);
             y=y(sidx);
-%             comp(end+1)=toc;
             
             % remaking the final vector. (In timeunits of seconds.
-%             tic;
-            if(length(x)==1)
-                rslt=[x(1),y(1)];
-                return;
+            if(length(x)>1)
+                tspan=0:obj.getTimebase():max(t);
+                x=interp1(t,x,tspan,'previous');
+                y=interp1(t,y,tspan,'previous');
             end
-            tspan=0:obj.getTimebase():max(t);
-            x=interp1(t,x,tspan,'previous');
-            y=interp1(t,y,tspan,'previous');
+            
+            x=obj.NormalizeVectorToVoltageRange(x,obj.ChannelVolategeRange);
+            y=obj.NormalizeVectorToVoltageRange(y,obj.ChannelVolategeRange);
+            
             rslt=[x',y'];
-%             comp(end+1)=toc;
-        end        
+        end   
     end    
+    
+    % static private methods
+    methods(Static, Access = private)
+        function [v]=NormalizeVectorToVoltageRange(v,range)
+            v(v<range(1))=range(1);
+            v(v>range(2))=range(2);
+        end
+    end
 end
 
