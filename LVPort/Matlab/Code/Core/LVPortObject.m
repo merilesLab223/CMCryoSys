@@ -25,6 +25,16 @@ classdef LVPortObject < handle
             end
             p=obj.m_port_refrence_object;
         end
+        
+        function update(obj,name,updateChanges)
+            if(~exist('name','var'))
+                name='';
+            end
+            if(~exist('updateChanges','var'))
+                updateChanges=false;
+            end            
+            obj.Port.update(name,updateChanges);
+        end
     end
 end
 

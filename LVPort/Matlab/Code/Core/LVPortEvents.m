@@ -1,27 +1,35 @@
 classdef LVPortEvents < handle
     %LVPORTEVENTS INTERNAL OBJECT!! allows port to use event posting
     %system.
+        
+    methods
+        function [obj]=LVPortEvents()
+           obj.Events=AutoRemoveAutoIDMap(5*60); 
+        end
+    end
     
     properties
-        Events=containers.Map;
+        Events=[];
     end
     
     properties (Access = private)
-        m_lastAnonymousEventIndex=0;
     end
     
     methods
         
         function [evid]=MakeNextAnonymousId(obj,namebase)
-            evid=[namebase,num2str(obj.m_lastAnonymousEventIndex)];
-            obj.LastAnonymousEventIndex=obj.m_lastAnonymousEventIndex+1;
+            evid=[namebase,num2str(obj.Events.NextTempID())];
         end
         
         function [evid]=PostEvent(obj,name,val,cat,evid)
-            ev=obj.MakeEventStructure(name,val,cat);
+            if(~exist('cat','var'))
+                cat='';
+            end
             if(~exist('evid','var'))
                 evid=name;
             end
+            
+            ev=LVPortEventStruct(name,cat,val);
             obj.Events(evid)=ev;
         end
         
@@ -37,21 +45,20 @@ classdef LVPortEvents < handle
         end
         
         function [rt]=HasPostedEvent(obj,evid)
-            rt=obj.Events.isKey(evid);
+            rt=obj.Events.contains(evid);
         end
     end
     
     methods
         % pumps all the evnets and removes the current.
         function [evs]=PumpEvents(obj)
-            evcol=obj.Events;
+            evs=obj.Events.values;
             obj.ClearEvents();
-            evs=evcol.values;
         end
         
         % clear all events.
         function ClearEvents(obj)
-            obj.Events=containers.Map;
+            obj.Events.clear();
         end
         
         % returns current events.

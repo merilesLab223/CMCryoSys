@@ -61,18 +61,20 @@ classdef ObjectMap < handle
         % transfer of the object by name.
         % allowed types that will not be converted.
         % real, complex, real matrix, complex matrix, string, bool (logical)            
-        function [namePaths,vals] = map(o,basename)
+        function [namePaths,vals] = map(o,basename,allowhandles)
             if(~exist('basename','var'))basename='';end
-            col=ObjectMap.mapToCollection(o,basename);
+            if(~exist('allowhandles','var'))allowhandles=false;end
+            col=ObjectMap.mapToCollection(o,basename,allowhandles);
             namePaths=col.keys;
             vals=col.values;
         end
         
-        function [col]=mapToCollection(o,basename)
+        function [col]=mapToCollection(o,basename,allowhandles)
             col=containers.Map;
+            if(~exist('allowhandles','var'))allowhandles=false;end
             if(~exist('basename','var'))basename='';end
             basename=strtrim(basename);
-            ObjectMap.parseObject(col,o,basename);
+            ObjectMap.parseObject(col,o,basename,allowhandles);
         end
         
         % either updates or constructs a new object according to the map.
@@ -292,9 +294,16 @@ classdef ObjectMap < handle
                     namepart(~isstrprop(namepart,'alphanum'))='_';
                 end
                 
+                if(~updateToSelf && (iscell(o) || isnumeric(o)))
+                    if(length(o)>1)
+                        error('Cannot update cell/numeric array object with field names.');
+                    end
+                    o=struct(); % overwrite self.
+                end
+                
                 if(updateToSelf)
                     ival=o;
-                elseif(isfield(o,namepart))
+                elseif(isfield(o,namepart)||isprop(o,namepart))
                     ival=o.(namepart);
                     to=ObjectMap.getType(ival);
                 else
@@ -311,9 +320,9 @@ classdef ObjectMap < handle
                     ival=struct();
                 end
                 
-                if(~(isstruct(o) || iscell(o))&&~isprop(o,namepart))
-                    % cannot update a class without the right name
-                    % parameter.
+                if(~updateToSelf &&~isstruct(o)&&~iscell(o)&&~isprop(o,namepart))
+                    % cannot update a class without the right named
+                    % peroperty.
                     return;
                 end
                 
@@ -326,8 +335,9 @@ classdef ObjectMap < handle
         end
         
         % recursive call to update an object.
-        function parseObject(col,o,basename)
+        function parseObject(col,o,basename,allowhandles)
             t=ObjectMap.getType(o);
+            
             switch(t)
                 case 'unconvertable'
                     % nothing to do.
@@ -344,7 +354,7 @@ classdef ObjectMap < handle
                         % note -1 is since matlab index start from 1
                         % and we want to convert to another lang. 
                         newname=[basename,num2str(i-1)];
-                        ObjectMap.parseObject(col,o{i},newname);
+                        ObjectMap.parseObject(col,o{i},newname,allowhandles);
                     end
                 case 'sarray'
                     if(isempty(o))
@@ -358,17 +368,22 @@ classdef ObjectMap < handle
                         % note -1 is since matlab index start from 1
                         % and we want to convert to another lang.
                         newname=[basename,num2str(i-1)];
-                        ObjectMap.parseObject(col,o(i),newname);
+                        ObjectMap.parseObject(col,o(i),newname,allowhandles);
                     end
-                case 'object'
+                case 'object'                                
+
+                    
                     if(~isempty(basename))
                         basename=[basename,ObjectMap.PathSeperator];
                     end
                     om=fieldnames(o);
                     for i=1:length(om)
                         fn=om{i};
-                        ObjectMap.parseObject(col,o.(fn),...
-                            [basename,fn]);
+                        if(~allowhandles && isa(o.(fn),'handle'))
+                            % do not allow internal handles.
+                            return;
+                        end  
+                        ObjectMap.parseObject(col,o.(fn),[basename,fn],allowhandles);
                     end        
                 otherwise
                     % string or number. (but a value).

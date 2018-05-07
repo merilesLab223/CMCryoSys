@@ -7,6 +7,8 @@ classdef AutoRemoveMap < handle
                 autoRemoveTimeout=5*60;
             end
             obj.AutoRemoveTimeout=autoRemoveTimeout;
+            obj.ObjectByID=containers.Map;
+            obj.AccessTimeByID=containers.Map;
         end
     end
     
@@ -15,8 +17,10 @@ classdef AutoRemoveMap < handle
     end
     
     properties (SetAccess = protected)
-        ObjectByID=containers.Map();
-        AccessTimeByID=containers.Map();
+        ObjectByID=[];
+        AccessTimeByID=[];
+        keys=[];
+        values=[];
     end
     
     events
@@ -24,16 +28,29 @@ classdef AutoRemoveMap < handle
     end
     
     methods
-        function o = subsref(col,id)
+        function [vals]=get.values(col)
+            vals=col.ObjectByID.values;
+        end
+        
+        function [vals]=get.keys(col)
+            vals=col.ObjectByID.keys;
+        end
+        
+        function clear(col)
+            col.ObjectByID.remove(col.ObjectByID.keys);
+            col.AccessTimeByID.remove(col.AccessTimeByID.keys);
+        end
+        
+        function varargout = subsref(col,id)
             switch(id(1).type)
                 case '.'
-                    o=builtin('subsref',col,id);
+                    [varargout{1:nargout}]=builtin('subsref',col,id);
                 case '{}'
                    error('LVPortCollection:subsref',...
                       'Not a supported subscripted reference');
                 otherwise
                     vid=id.subs{1};                     
-                    o=col.getById(vid);
+                    varargout{1}=col.getById(vid);
             end
         end
         
@@ -76,8 +93,9 @@ classdef AutoRemoveMap < handle
                 return;
             end
             id=col.validateID(id);
-            col.cleanDead();
+            col.setAccessed(id);
             o=col.ObjectByID(id);
+            col.cleanDead();
         end
         
         function [id]=setById(col,id,o) 
@@ -85,6 +103,10 @@ classdef AutoRemoveMap < handle
             col.setAccessed(id);
             col.ObjectByID(id)=o;
             col.cleanDead();
+        end
+        
+        function [rt]=remove(col,id)
+            rt=col.removeById(id);
         end
         
         function [rt]=removeById(col,id)
@@ -108,9 +130,20 @@ classdef AutoRemoveMap < handle
             end
         end
         
+        function [t]=getTimeout(col,id)
+            t=0;
+            if(~col.AccessTimeByID.isKey(id))
+                return;
+            end
+            t=col.AutoRemoveTimeout-(col.curTime()-col.AccessTimeByID(id));
+        end
+        
         function [rt]=contains(col,id)
             id=col.validateID(id);
             rt=col.ObjectByID.isKey(id);
+            if(rt)
+                col.setAccessed(id);
+            end
         end
     end
     

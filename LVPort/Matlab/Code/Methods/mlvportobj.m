@@ -1,6 +1,6 @@
-function [po] = mportobj(id)
+function [po] = mlvportobj(id)
     %MPORT get the Matlab port by its id.
-    p=mport(id);
+    p=mlvport(id);
     po=p.PortObject;
 end
 

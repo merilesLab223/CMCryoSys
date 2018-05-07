@@ -4,8 +4,9 @@ classdef LVPortObjectMap < handle
     
     methods
         function obj = LVPortObjectMap(omap,compareTo)
-            o.ValMap=omap;
-            if(exist(compareTo,'var')&&isa(comapreTo,'containers.Map'))
+            obj.ValMap=omap;
+            obj.ValInfoMap=containers.Map();
+            if(exist('compareTo','var')&&isa(comapreTo,'containers.Map'))
                 obj.removeUnchanged(compareTo,compareTo);
             end
         end        
@@ -13,11 +14,14 @@ classdef LVPortObjectMap < handle
     
     properties (SetAccess = protected)
         ValMap=[]; % must be defined
-        ValIndexMap=containers.Map;
+        ValInfoMap=[];
     end
     
     methods        
-        function [hasval,val,vsize,idxs]=GetNampathInfo(obj,namepath)
+        function [hasval,val,vsize,idxs,similarToOld]=GetNampathInfo(obj,namepath,ot)
+            if(~exist('ot','var'))
+                ot=[];
+            end         
             hasval=0;
             val=[];
             vsize=[];
@@ -25,19 +29,29 @@ classdef LVPortObjectMap < handle
             if(~obj.ValMap.isKey(namepath))
                 return;
             end
-            hasval=1;
             val=obj.ValMap(namepath);
-            if(obj.ValIndexMap.iskey(namepath))
-                idxsInfo=obj.ValIndexMap(namepath);
+            if(~isempty(ot) && ischar(ot) && ~strcmp(ot,ObjectMap.getType(val)))
+                val=[];
+                return;
+            end
+            hasval=1;
+            
+            if(obj.ValInfoMap.isKey(namepath))
+                idxsInfo=obj.ValInfoMap(namepath);
                 idxs=idxsInfo.idxs;
-                vsize=idxsInfo.orgSize;
+                similarToOld=idxsInfo.similarToOld;
+                
+                if(~isempty(idxs))
+                    vsize=idxsInfo.orgSize;
+                    val=val(idxs);
+                end
             else
                 idxs=[];
                 vsize=size(val);
             end
         end
         
-        function removeUnchanged(obj,compareToMap)
+        function minimizeUnchanged(obj,compareToMap)
             namepaths=compareToMap.keys;
             vals=compareToMap.values;
             
@@ -46,34 +60,35 @@ classdef LVPortObjectMap < handle
                 if(~obj.ValMap.isKey(namepath))
                     continue;
                 end
-                val=vals{i};
-                do_remove_similar=false;
+                cval=vals{i};
+                is_obj_similar=false;
                 do_set_update_idxs=[];
                 
-                if(ismatrix(val))
+                if(ismatrix(cval))
                     % must be the same size to compare.
-                    if(all(size(val)==size(obj.ValMap(namepath))))
+                    if(all(size(cval)==size(obj.ValMap(namepath))))
                         % find index to update.
-                        oldmat=obj.ValMap(namepath);
-                        do_set_update_idxs=find(val(:)~=oldmat(:));
+                        val=obj.ValMap(namepath);
+                        do_set_update_idxs=find(cval~=val);
                         if(isempty(do_set_update_idxs))
-                            do_remove_similar=true;
-                        elseif(length(do_set_update_idxs)==length(oldmat(:)))
-                            do_set_update_idxs=[]; % there are all diffrent.
-                        end 
+                            is_obj_similar=true;
+                        elseif(length(do_set_update_idxs)==length(val(:)))
+                            do_set_update_idxs=[]; % they are all diffrent.
+                        else
+                            %disp(do_set_update_idxs);
+                        end
                     end
                 else
-                    do_remove_similar=val==obj.ValMap(namepath);
+                    is_obj_similar= cval==obj.ValMap(namepath);
                 end
                 
                 % we need to update?
-                if(do_remove_similar)
-                    obj.ValMap.remove(namepath);
-                elseif(~isempty(do_set_update_idxs))
+                if(~isempty(do_set_update_idxs))
                     idxinfo={};
+                    idxinfo.similarToOld=is_obj_similar;
                     idxinfo.idxs=do_set_update_idxs;
-                    idxinfo.orgSize=size(val);
-                    obj.ValIndexMap(namepath)=idxinfo;
+                    idxinfo.orgSize=size(cval);
+                    obj.ValInfoMap(namepath)=idxinfo;
                 end
             end
         end

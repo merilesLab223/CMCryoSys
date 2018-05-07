@@ -1,6 +1,12 @@
 classdef LVPortProperties < handle
     %LVPORTEVENTS INTERNAL OBJECT!! allows port to use properties update
     %system.
+            
+    methods
+        function [obj]=LVPortProperties()
+           obj.m_oldObjectCollection=AutoRemoveMap(5*60);
+        end
+    end
     
     properties
         UpdateChangesDefault=false;
@@ -9,14 +15,24 @@ classdef LVPortProperties < handle
     
     properties (Access = private)
         % a map for all partial update by name;
-        m_oldObjectCollection=containers.Map;
+        m_oldObjectCollection=[];
     end
     
     properties (Constant)
-        LVPortPropertiesEventCategory='matlab_prop';
+        LVPortPropertiesEventCategory='lvport_m_properties';
     end
     
     methods
+        
+        % calls to invalidate the property and update it.
+        function InvalidatePropertyByName(obj,name)
+            if(obj.m_oldObjectCollection.contains(name))
+                obj.m_oldObjectCollection.remove(name);
+            end
+            % call to update directly.
+            obj.update(name);
+        end
+        
         function [evid]=update(obj,name,updateChanges)
             if(~exist('name','var'))
                 name='';
@@ -47,7 +63,7 @@ classdef LVPortProperties < handle
                 end
             end
             
-            if(~isprop(obj.PortObject,'name'))
+            if(~isprop(obj.PortObject,name))
                 return;
             end
             
@@ -57,33 +73,32 @@ classdef LVPortProperties < handle
             end
             
             evid=LVPortProperties.MakeEventIDFromParameterName(name);
-            if(~obj.HasPostedEvent(evid))
-                up={};
-                up.pname=name;
-                up.val=@()obj.getObjectPropertyMapByName(name,updateChanges);
-                % category matlab prop
-                obj.PostEvent('mUpdateProperty',up,...
-                    LVPortProperties.LVPortPropertiesEventCategory,evid); 
-            end
+            pID=obj.ID;
+            up=@()LVPortProperties.globcaller_getObjectPropertyMapByName(...
+                pID,name,updateChanges);
+            % category matlab prop
+            obj.PostEvent('mupdate',up,...
+                LVPortProperties.LVPortPropertiesEventCategory,evid); 
         end
         
         function [map]=getObjectPropertyMapByName(obj,name,updateChanges)
             if(~exist('updateChanges','var'))
                 updateChanges=obj.UpdateChangesDefault;
-            end  
+            end
             map=[];
             if(~isprop(obj.PortObject,name))
                 return;
             end
-            omap=ObjectMap.map(obj.PortObject.(name));
+            omap=ObjectMap.mapToCollection(obj.PortObject.(name));
+            omap('~pname')=name; % an invalide map info to allow us to get the name without another temp.
             map=LVPortObjectMap(omap);
             if(updateChanges)
-                if(obj.m_oldObjectCollection.isKey(name))
-                    map.removeUnchanged(obj.m_oldObjectCollection(name));
+                if(obj.m_oldObjectCollection.contains(name))
+                    map.minimizeUnchanged(obj.m_oldObjectCollection(name));
                 end
                 % set the new map.
                 obj.m_oldObjectCollection(name)=omap;
-            elseif(obj.m_oldObjectCollection.isKey(name))
+            elseif(obj.m_oldObjectCollection.contains(name))
                 obj.m_oldObjectCollection.remove(name);
             end
         end
@@ -93,6 +108,17 @@ classdef LVPortProperties < handle
         function [evid]=MakeEventIDFromParameterName(name)
             evid=['lvport_param_update:',name];
         end
+    end
+    
+    methods (Static,Access = private)
+        function [map]=globcaller_getObjectPropertyMapByName(pID,name,updateChanges)
+            if(~mlvhasport(pID))
+                % current port inactive?
+                return;
+            end
+            p=mlvport(pID);
+            map=p.getObjectPropertyMapByName(name,updateChanges);
+        end        
     end
 end
 
