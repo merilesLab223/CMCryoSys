@@ -15,6 +15,7 @@ classdef CSCom < handle
     
     properties (SetAccess = private)
         NetO=[];
+        LastResponceIndex=0;
     end
     
     events
@@ -35,13 +36,34 @@ classdef CSCom < handle
             obj.NetO.Stop();
         end
         
-        function Send(obj,msg,mtype,o)
+        function [varargout]=Send(obj,msg,mtype,o)
             % making the message from the map.
+            wasComMessage=true;
             if(~isa(msg,'CSComMessage'))
+                wasComMessage=false;
                 msg=CSComMessage.FromMatlabObj(msg,mtype,o);
             end
-
-            obj.NetO.Send(msg.ToNetObject());
+            requireResponse=nargout>0;
+            rsp=obj.NetO.Send(msg.ToNetObject(),requireResponse);
+            if(~requireResponse)
+                return;
+            end
+            % moving to matlab.
+            rsp=CSComMessage.FromNetObject(rsp);
+            if(wasComMessage)
+                varargout(1)=rsp;
+                return;
+            end
+            
+            % converting back to object.
+            ro=rsp.UpdateObject();
+            
+            % checking the number of argumetns.
+            if(nargout>1 && iscell(ro))
+                varargout(:)=ro;
+            else
+                varargout(1)=ro;
+            end
         end
     end
     
@@ -66,10 +88,9 @@ classdef CSCom < handle
     methods(Static)
         function [val]=NetValueToRawData(nval)
             vc=class(nval);
-            vc=class(nval);
             vc=lower(vc);
             if(contains(vc,'.boolean'))
-                var=logical(nval);
+                val=logical(nval);
             elseif(contains(vc,'.double'))
                 val=double(nval);
             elseif(contains(vc,'.single'))

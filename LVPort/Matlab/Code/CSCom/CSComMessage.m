@@ -1,25 +1,52 @@
-classdef CSComMessage
+classdef CSComMessage <handle
     %CSCOMMESSAGE Summary of this class goes here
     %   Detailed explanation goes here
 
     methods
-        function obj = CSComMessage(msg,type,map)
+        function obj = CSComMessage(msg,type,map,compareTo)
             if(ischar(msg))
                 obj.Message=msg;
             else
-                objMessage=[];
+                obj.Message=[];
             end
             
             if(isnumeric(type))
-                objMessageType=type;
+                obj.MessageType=type;
             else
-                objMessageType=-1;
+                obj.MessageType=-1;
             end
             
-            if(isa(map,'containers.Map'))
-                obj.Namepaths=map;
+            if(exist('compareTo','var'))
+                obj.Namepaths=CSComMessageNamepathData.ToNamepathDataMap(map,compareTo);
+            else
+                obj.Namepaths=CSComMessageNamepathData.ToNamepathDataMap(map);
             end
         end
+        
+        function [o]=UpdateObject(obj,o)
+            % update or make the object from the namepath.
+            hasSource=true;
+            if(~exist('o','var'))
+                o=[];% new source object.
+                hasSource=false;
+            end
+            
+            if(hasSource)
+                map=ObjectMap.mapToCollection(o);
+            end
+            
+            for i=1:length(obj.Namepaths.keys)
+                npd=obj.Namepaths.values(i);
+                if(hasSource && map.isKey(npd.Namepath))
+                    % need to update the source.
+                    val=npd.GetValue(map(npd.Namepath));
+                else
+                    val=npd.GetValue();
+                end
+                ObjectMap.update(o,npd.Namepath,val);
+            end
+        end
+                
     end
     
     properties(SetAccess = private)
@@ -29,7 +56,22 @@ classdef CSComMessage
     end
     
     methods
-        function netO=ToNetObject(obj)
+        function msg=ToNetObject(obj)
+            % collecting data.
+            for i=1:length(obj.Namepaths.values)
+                npd=obj.Namepaths.values{i};
+                csnpd=NPMessageNamepathData();
+                csnpd.Value=npd.Value;
+                csnps.Namepath=npd.Namepath;
+                csnps.Idxs=npd.Idxs;
+                csnps.Size=npd.Size;
+            end
+            mtype=8;
+            if(~isempty(obj.MessageType))
+                mtype=obj.MessageType;
+            end
+            
+            msg=NPMessage(mtype,csnpd,char(obj.Message));
         end
     end
     
@@ -41,26 +83,16 @@ classdef CSComMessage
             map=containers.Map();
             for i=1:length(infos)
                 info=infos(i);
-                namepath=CSCom.NetValueToRawData(info.Namepath);
-                if(~ischar(namepath))
-                    continue;
-                end
-                mv=struct();
-                mv.idxs=int32(info.idxs);
-                mv.size=int32(info.Size);
-                mv.value=CSCom.NetValueToRawData(info.Value);
-                
-                map(namepath)=mv;
+                npd=CSComMessageNamepathData(...
+                    CSCom.NetValueToRawData(info.Namepath),...
+                    CSCom.NetValueToRawData(info.Value),...
+                    CSCom.NetValueToRawData(info.Size),...
+                    CSCom.NetValueToRawData(info.Idxs));
+                map(npd.Namepath)=npd;
             end
             
             o=CSComMessage(nobj.Message,...
                 int32(nobj.MessageType),map);                 
-        end
-        
-        % convert to net object.
-        function [cscmsg]=FromMatlabObj(msg,mtype,o)
-            map=ObjectMap.mapToCollection(o);
-            
         end
     end
         

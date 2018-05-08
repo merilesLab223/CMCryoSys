@@ -41,7 +41,6 @@ reader.externalClockTerminal=clockTerm;
 % adding measurement reader.
 dcol=TimedDataCollector(reader);
 
-
 %% Configure devices.
 % call to configure.
 pos.configure();
