@@ -50,15 +50,15 @@ clock.configure();
 
 %% Image scan example.
 % clearing previous path.
-doMultiScan=1;
+doMultiScan=0;
 multidir=0;
 VoltToUm=172;
-n=500;
+n=1000;
 x0=0;
 y0=0;
-dist=500;
-dt=5000;% in ms.
-asDwellTime=0;
+dist=1000;
+dt=0.5;% in ms.
+asDwellTime=1;
 
 % convert back to volts.
 dist=dist./VoltToUm;
