@@ -42,8 +42,9 @@ function [img,uidxs] = DisplayScanAsImage(rslt,coln,rown,dwellTime,lastImg,multi
         dimg=log(dimg+min(dimg(:))+2);
     end
     imagesc(x,y,dimg);
-    colormap('gray');
+    colormap('jet');
     axis equal;
+    colorbar;
     drawnow;
     comp=toc;
     if(comp>0.1)

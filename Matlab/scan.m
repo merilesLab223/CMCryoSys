@@ -1,9 +1,15 @@
 %% Examples docment for lecture.
 % the examples document shows simple commands to be sent to the system.
+
+% Initialize the library
+InitZLib;
 clear;
-useAnalog=1;
+daq.reset();
+
 %% Device preparation.
 % devices - time based.
+useAnalog=1;
+
 pos=NI6321Positioner2D('Dev1');
 if(useAnalog)
     reader=NI6321AnalogReader('Dev1');
@@ -53,13 +59,18 @@ clock.configure();
 doMultiScan=0;
 multidir=0;
 VoltToUm=172;
-n=1000;
-x0=-37;
-y0=-13;
-dist=100;
-dt=10000;% in ms.
-asDwellTime=0;
 
+% image parameters.
+n=250; % number of pixels
+x0=0;
+y0=0;
+dist=100; %[um] (= Width,Height) square image.
+whratio=1.56;
+
+dt=0.1;% in ms.
+asDwellTime=1; % if 1, then dt is a signle pixel time. Otherwise dt/n^2.
+
+%% Do converions.
 % convert back to volts.
 dist=dist./VoltToUm;
 x0=x0./VoltToUm;
@@ -67,7 +78,7 @@ y0=y0./VoltToUm;
 
 width=dist;
 height=dist;
-whratio=1.56;
+
 posOffset=10*multidir;
 mOffset=0.225*multidir;
 
