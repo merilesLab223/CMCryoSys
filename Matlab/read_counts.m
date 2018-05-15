@@ -9,6 +9,7 @@ daq.reset();
 %% Configure
 abort=0;
 useAnalog=1;
+usePulseBlasterAsClock=1;
 
 % hard connections.
 % port0/line1 ->USER1 ->PFI0 : Trigger.
@@ -23,21 +24,34 @@ else
     reader.ctrName='ctr0';
 end
 
-clock=NI6321Clock('Dev1');
-clock.ctrName='ctr3';
+clockrate=1e4;
+clockFreq=clockrate*2;
+if(~usePulseBlasterAsClock)
+    clock=NI6321Clock('Dev1'); % loopback clock.
+    clock.ctrName='ctr3';
+    clockTerm='pfi14';
+    clock.setClockRate(clockrate);
+    clock.clockFreq=clockFreq;
+else
+    clock=SpinCoreTTLGenerator(); % loopback clock.
+    clock.setClockRate(300e6);
+    clock.Channel=[0,1];
+    clockTerm='pfi0';
+end
 
-clockTerm='pfi14';
 triggerTerm=clockTerm;
 reader.externalClockTerminal=clockTerm;
-
-clockrate=1e4;
-clock.setClockRate(clockrate);
-clock.clockFreq=clockrate*2;
-reader.setClockRate(clock.clockFreq);
+reader.setClockRate(clockFreq);
 
 %% configure
 reader.configure();
 clock.configure();
+
+if(usePulseBlasterAsClock)
+    clock.clear();
+    clock.Pulse(1,1,1);
+    clock.ClockSignal(1000*60*5,clockFreq,0);
+end
 
 %% Data colelctor.
 streamCol=StreamCollector(reader);

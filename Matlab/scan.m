@@ -22,10 +22,11 @@ end
 
 if(~usePulseBlasterAsClock)
     clock=NI6321Clock('Dev1'); % loopback clock.
+    clock.ctrName='ctr3';
 else
     clock=SpinCoreTTLGenerator(); % loopback clock.
     clock.setClockRate(300e6);
-    clock.Channel=[0];
+    clock.Channel=[0,1];
 end
 
 
@@ -151,11 +152,13 @@ reader.setClockRate(cfreq); % uses external clock.
 % If pulseblaster is clock, need to configure the sequnce.
 if(usePulseBlasterAsClock)
     clock.clear();
-    tup=1/(2*cfreq);
-    tup=tup./clock.timeUnitsToSecond;
-    pcount=(totalTime.*1.1./tup);
-    tdown=tup;
-    clock.PulseTrain(pcount,tup,tdown);
+    clock.Pulse(1,1,1);
+    clock.ClockSignal(totalTime*1.5,cfreq,0);
+%     tup=1/(2*cfreq);
+%     tup=tup./clock.timeUnitsToSecond;
+%     pcount=(totalTime.*1.1./tup);
+%     tdown=tup;
+%     clock.PulseTrain(pcount,tup,tdown);
 else
     clock.setClockRate(crate);
     clock.clockFreq=cfreq;
