@@ -113,8 +113,9 @@ classdef TTLGenerator < TimeBasedSignalGenerator
                 
                 if(idata.n>1)
                     ld=ld*idata.n;
-                    ti=repmat(ti,1,idata.n);
-                    bi=repmat(bi,1,idata.n);
+                    repn=floor(idata.n);
+                    ti=repmat(ti,1,repn);
+                    bi=repmat(bi,1,repn);
                 end
                 
                 % updating times.

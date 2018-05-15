@@ -60,15 +60,15 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
                 end
                 obj.ComputerToReaderTimeOffset=accumilatedClockOffset;
 
-                
                 if(obj.m_eventDataStruct.IsExecuting)
                     obj.m_eventDataStruct=DAQEventStruct;
                 end
                 
-                ev=obj.m_eventDataStruct;
+                ev=DAQEventStruct();%obj.m_eventDataStruct;
                 ev.IsExecuting=1;
                 ev.deviceTimeStamps=e.TimeStamps;
-                ev.TimeStamps=e.TimeStamps./(obj.ClockRatio*obj.timeUnitsToSecond);%(obj.TickCount+(1:length(e.TimeStamps)))./(obj.ActiveRate*obj.timeUnitsToSecond); % rate to time
+                ev.TimeStamps=ev.deviceTimeStamps./...
+                    (obj.ClockRatio*obj.timeUnitsToSecond);
                 ev.TotalTicksSinceStart=obj.TickCount;
                 ev.Elapsed=ev.TimeStamps(1);
                 ev.TicksElapsed=obj.TickCount/(obj.timeUnitsToSecond*obj.ClockRatio*obj.Rate);

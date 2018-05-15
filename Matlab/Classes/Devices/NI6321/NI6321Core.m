@@ -45,6 +45,9 @@ classdef NI6321Core < Device & TimeBasedObject
         end
         function []=stop(obj)
             s=obj.niSession;
+            if(isempty(s))
+                return;
+            end
             if(~s.IsRunning)
                 %disp('Called stop on a non running session.');
                 return;

@@ -3,12 +3,15 @@
 
 % Initialize the library
 InitZLib;
-clear;
+clear pos;
+clear reader;
+clear clock;
 daq.reset();
 
 %% Device preparation.
 % devices - time based.
 useAnalog=1;
+usePulseBlasterAsClock=1;
 
 pos=NI6321Positioner2D('Dev1');
 if(useAnalog)
@@ -16,23 +19,34 @@ if(useAnalog)
 else
     reader=NI6321Counter('Dev1');
 end
-clock=NI6321Clock('Dev1'); % loopback clock.
-%trigger=NI6321TTLGenerator('Dev1');
+
+if(~usePulseBlasterAsClock)
+    clock=NI6321Clock('Dev1'); % loopback clock.
+else
+    clock=SpinCoreTTLGenerator(); % loopback clock.
+    clock.setClockRate(300e6);
+    clock.Channel=[0];
+end
+
 
 %% Device configuration.
 % setting terminals and params.
 
-% hard connections.
+% NI hard connections.
 % port0/line1 ->USER1 ->PFI0 : Trigger.
 % pfi15->pfi14 : Clock loopback.
 % pfi8 (counter 0)->User2 : counter input)
 
 pos.xchan='ao0';
 pos.ychan='ao1';
-clock.ctrName='ctr3';
-clockTerm='pfi14';
-triggerTerm=clockTerm;
+if(~usePulseBlasterAsClock)
+    clock.ctrName='ctr3';
+    clockTerm='pfi14';
+else
+    clockTerm='pfi0';
+end
 
+triggerTerm=clockTerm;
 pos.triggerTerm=triggerTerm;
 
 if(useAnalog)
@@ -55,20 +69,24 @@ reader.configure();
 clock.configure();
 
 %% Image scan example.
-% clearing previous path.
+% clearing previous pat1h.
 doMultiScan=0;
 multidir=0;
 VoltToUm=172;
 
 % image parameters.
-n=250; % number of pixels
-x0=0;
-y0=0;
-dist=100; %[um] (= Width,Height) square image.
+n=200; % number of pixels
 whratio=1.56;
 
-dt=0.1;% in ms.
-asDwellTime=1; % if 1, then dt is a signle pixel time. Otherwise dt/n^2.
+dt=10000;% in ms.
+asDwellTime=0; % if 1, then dt is a signle pixel time. Otherwise dt/n^2.
+
+if(~exist('x0','var')||~exist('scan_skipcurpos','var')||~scan_skipcurpos)
+    x0=0;
+    y0=0;
+    dist=800; %[um] (= Width,Height) square image.
+end    
+
 
 %% Do converions.
 % convert back to volts.
@@ -80,7 +98,7 @@ width=dist;
 height=dist;
 
 posOffset=10*multidir;
-mOffset=0.225*multidir;
+mOffset=0*multidir;
 
 if(asDwellTime)
     totalTime=dt.*n^2;
@@ -102,22 +120,8 @@ WriteImageScan(pos,x0-width/2,y0-height/2,width,height,n,n,dwellTime,...
     'multidirectional',multidir,'timeOffset',posOffset);
 
 % goto 0,0 and wait 100;
-pos.GoTo(0,0,1);
-
-%% Two nv scan & measurment example
-% nvp=[0.8,0.3;-0.1,0.8];
-% nvt=[300,300];
-% snv=size(nvp);
-% nvrepeat=1;
-% for i=1:nvrepeat
-%     for j=1:snv(2)
-%         pos.GoTo(nvp(j,1),nvp(j,2));
-%         pos.wait(nvt(j));
-%     end
-% end
-% 
-% % back to origin.
-% pos.GoTo(0,0);
+pos.GoTo(0,0,100);
+%goto(0,0);
 
 %% waiting for origin to be resored.
 pos.toRounded(1);
@@ -140,18 +144,28 @@ end
 clockfreqToRate=2;
 cfreq=crate*clockfreqToRate;
 
-% adjusted to clock.
-reader.setClockRate(cfreq); % uses external clock.
+% adjusted to clock. (cfreq>crate)
 pos.setClockRate(crate);
-clock.setClockRate(crate); % clock output can be slower since freq.
-clock.clockFreq=cfreq;
+reader.setClockRate(cfreq); % uses external clock.
+
+% If pulseblaster is clock, need to configure the sequnce.
+if(usePulseBlasterAsClock)
+    clock.clear();
+    tup=1/(2*cfreq);
+    tup=tup./clock.timeUnitsToSecond;
+    pcount=(totalTime.*1.1./tup);
+    tdown=tup;
+    clock.PulseTrain(pcount,tup,tdown);
+else
+    clock.setClockRate(crate);
+    clock.clockFreq=cfreq;
+end
 dcol.setClockRate(crate);
 
 disp(['Measureing with, sampling rate: ',num2str(crate),' (clock freq: ',num2str(cfreq),' [hz])']);
-
 %% Measurement example for image
 % bin every second.
-mbins=totalTime/1000;%1+floor(rand()*19); % the total number of measurement bins
+mbins=round(totalTime/1000);%1+floor(rand()*19); % the total number of measurement bins
 if mbins<10
     mbins=10;
 end
@@ -190,12 +204,9 @@ mcomplete=0;
 dcol.addlistener('Complete',@(s,e)disp(['Measurement completed in [ms]: ',...
     num2str(round(e.Data))]));
 %% preparing $ running.
-
 lastimg=[];
 firstScan=1;
 while(doMultiScan || firstScan)
-    
-       
     firstScan=0;
     pos.stop();
     clock.stop();
