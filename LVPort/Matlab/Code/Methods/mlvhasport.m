@@ -1,4 +1,4 @@
 function rt = mlvhasport(pid)
-    rt=LVPort.Ports.contains(pid);
+    rt=LVPort.Global.contains(pid);
 end
 

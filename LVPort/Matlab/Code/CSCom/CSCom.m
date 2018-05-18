@@ -1,12 +1,24 @@
 classdef CSCom < handle
     %CSCOM Implements the websocket connection module to be used
     methods
-        function obj = CSCom(url)
-            if(~exist('url','var'))url='ws://localhost:50001/LVPort';end
+        function obj = CSCom(url,assemblyLoc)
+            if(~exist('url','var'))
+                url=CSCom.DefaultURL;
+            end
+            if(isempty(which('CSCom.CSCom')))
+                if(~exist('assemblyLoc','var'))
+                    assemblyLoc=CSCom.GetAssemblyLocationFromCurrentFileLocation();
+                end                
+                NET.addAssembly(assemblyLoc);
+            end
             NetO=CSCom.CSCom(url);
             NetO.addlistener('Log',@obj.onLog);
             NetO.addlistener('MessageRecived',@obj.onMessage);
         end
+    end
+    
+    properties(Constant)
+        DefaultURL='ws://localhost:50001/CSCom';
     end
     
     properties
@@ -16,6 +28,7 @@ classdef CSCom < handle
     properties (SetAccess = private)
         NetO=[];
         LastResponceIndex=0;
+        IsAlive=[];
     end
     
     events
@@ -24,6 +37,11 @@ classdef CSCom < handle
     end
     
     methods
+        
+        function [rt]=get.IsAlive(obj)
+            rt=obj.NetO.IsAlive;
+        end
+        
         function Listen(obj)
             obj.NetO.Listen();
         end
@@ -80,8 +98,16 @@ classdef CSCom < handle
             if(~event.hasListener(obj,'MessageRecived'))
                 return;
             end
-            msg=CSComMessage.FromNetObject(e.Message);
-            obj.notify('MessageRecived',EventStruct(msg));
+            
+            msg=CSComMessage.FromNetObject(...
+                e.Message);
+            
+            obj.notify('MessageRecived',CSComMessageRecivedEventData(msg,...
+                e.WebsocketID,e.RequiresResponse));
+            
+            if(e.RequiresResponse)
+                obj.Send(e.Response);
+            end
         end
     end
 
@@ -116,6 +142,15 @@ classdef CSCom < handle
             elseif(contains(vc,'.string')) % string will become char.
                 val=char(nval);
             end
+        end
+    end
+    
+    methods(Static)
+        function [apath]=GetAssemblyLocationFromCurrentFileLocation()
+            fn=mfilename('fullpath');
+            apath=fileparts(fileparts(fileparts(fileparts(fn))));
+            apath=[apath,'\CSCom\CSCom\bin\Release\CSCom.dll'];
+            %disp(apath);
         end
     end
 end

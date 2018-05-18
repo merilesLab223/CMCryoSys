@@ -1,4 +1,4 @@
-classdef (ConstructOnLoad) EventStruct < event.EventData & dynamicprops
+classdef (ConstructOnLoad) EventStruct < event.EventData
     %EVENTSTRUCT General event data.
     %   Used as catch all event data.
     properties
@@ -6,9 +6,9 @@ classdef (ConstructOnLoad) EventStruct < event.EventData & dynamicprops
     end
     
     methods
-        function EventStruct(data)
-            if(~exist('data','var'))
-                Data=data;
+        function [obj]=EventStruct(data)
+            if(exist('data','var'))
+                obj.Data=data;
             end
         end
     end

@@ -13,6 +13,7 @@ classdef LVPort < handle & LVPortEvents & LVPortProperties & LVPortCom
             obj.PortObject=portObject;
         end
     end
+
     
     % main methods.
     properties (SetAccess = protected)
@@ -22,27 +23,34 @@ classdef LVPort < handle & LVPortEvents & LVPortProperties & LVPortCom
     
     properties (Constant)
         % global map with auto destroy.
-        Ports=AutoRemoveAutoIDMap(5*60);
+        Global=LVPortGlobals();%AutoRemoveAutoIDMap(5*60);
     end
     
     % global generation methods
     methods (Static)
-        % makes a new port.
-        function [id,hasCodePath,compileErrors]=MakePort(codepath)  
-            hasCodePath=0;
+        
+        % call to initialize the Global service.
+        function InitializeService()
+            LVPort.Global.Init();
+        end
+        
+        % makes a new port from a codepath file.
+        function [po,pathFound,compileErrors]=MakePort(codepath)  
+            pathFound=false;
             compileErrors='';
             id=-1;
             if(exist('codepath','var') && ischar(codepath))
                 if(~endsWith(codepath,'.m'))
                     codepath=[codepath,'.m'];
                 end
-                hasCodePath=1;
+                pathFound=true;
             end
             % create
             po=[]; % just to make sure we know it;
-            if(hasCodePath)
+            if(pathFound)
                 try
                     if(~exist(codepath,'file'))
+                        pathFound=false;
                         error(['File not found "',codepath,'"']);
                     end
                     
@@ -63,7 +71,8 @@ classdef LVPort < handle & LVPortEvents & LVPortProperties & LVPortCom
                 po=LVPortObject();
             end
             
-            [id]=LVPort.RegisterPort(id,po.Port);
+            [id]=LVPort.Global.Register(po,id);
+            
             if(isnumeric(id))
                 id=num2str(id);
             end
@@ -103,11 +112,6 @@ classdef LVPort < handle & LVPortEvents & LVPortProperties & LVPortCom
         
         function [id]=PathToLVID(fpath)
             id=['P',lvport_hash(lower(fpath)),'C'];
-        end
-        
-        function [id]=RegisterPort(id,port)
-            id=LVPort.Ports.setById(id,port);
-            port.ID=id;
         end
     end
 end

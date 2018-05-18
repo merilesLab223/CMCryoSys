@@ -22,6 +22,33 @@ classdef CSComMessage <handle
                 obj.Namepaths=CSComMessageNamepathData.ToNamepathDataMap(map);
             end
         end
+                
+    end
+    
+    properties(SetAccess = protected)
+        Message=[];
+        MessageType=[];
+        Namepaths=[];
+    end
+    
+    methods
+        function msg=ToNetObject(obj)
+            % collecting data.
+            for i=1:length(obj.Namepaths.values)
+                npd=obj.Namepaths.values{i};
+                csnpd=NPMessageNamepathData();
+                csnpd.Value=npd.Value;
+                csnps.Namepath=npd.Namepath;
+                csnps.Idxs=npd.Idxs;
+                csnps.Size=npd.Size;
+            end
+            mtype=8;
+            if(~isempty(obj.MessageType))
+                mtype=obj.MessageType;
+            end
+            
+            msg=CSCom.NPMessage(mtype,csnpd,char(obj.Message));
+        end
         
         function [o]=UpdateObject(obj,o)
             % update or make the object from the namepath.
@@ -45,34 +72,7 @@ classdef CSComMessage <handle
                 end
                 ObjectMap.update(o,npd.Namepath,val);
             end
-        end
-                
-    end
-    
-    properties(SetAccess = private)
-        Message=[];
-        MessageType=[];
-        Namepaths=[];
-    end
-    
-    methods
-        function msg=ToNetObject(obj)
-            % collecting data.
-            for i=1:length(obj.Namepaths.values)
-                npd=obj.Namepaths.values{i};
-                csnpd=NPMessageNamepathData();
-                csnpd.Value=npd.Value;
-                csnps.Namepath=npd.Namepath;
-                csnps.Idxs=npd.Idxs;
-                csnps.Size=npd.Size;
-            end
-            mtype=8;
-            if(~isempty(obj.MessageType))
-                mtype=obj.MessageType;
-            end
-            
-            msg=NPMessage(mtype,csnpd,char(obj.Message));
-        end
+        end        
     end
     
     methods(Static)
@@ -92,7 +92,7 @@ classdef CSComMessage <handle
             end
             
             o=CSComMessage(nobj.Message,...
-                int32(nobj.MessageType),map);                 
+                int32(nobj.MessageType),map);    
         end
     end
         

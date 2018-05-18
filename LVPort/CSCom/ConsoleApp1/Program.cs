@@ -15,21 +15,19 @@ namespace Tester
             if (doSelfServer)
             {
                 server = new CSCom.CSCom();
-                server.LogMethod = (d, s) =>
-                {
-                    Console.WriteLine(d.ToString());
+                server.Log+=(s,e)=>{
+                    Console.WriteLine(e.Message);
                 };
                 server.Listen();
-                server.MessageRecived += Server_MessageRecived;
+                server.MessageRecived += Server_MessageRecived1; ;
             }
             CSCom.CSCom clinet = new CSCom.CSCom();
-            clinet.LogMethod = (d, s) =>
-            {
-                Console.WriteLine(d.ToString());
+            clinet.Log += (s, e) => {
+                Console.WriteLine(e.Message);
             };
             clinet.Connect();
             System.Threading.Thread.Sleep(100);
-            if(clinet.WS.IsAlive)
+            if(clinet.IsAlive)
             {
                 Console.WriteLine("Connected to server.");
                 CSCom.NPMessageNamepathData data = new CSCom.NPMessageNamepathData();
@@ -37,7 +35,7 @@ namespace Tester
                 valToSend[9999] = 23;
                 data.Value = valToSend;
                 data.Namepath = "lama";
-                clinet.Send(new CSCom.NPMessage(new CSCom.NPMessageNamepathData[] { data }));
+                clinet.Send(new CSCom.NPMessage(CSCom.NPMessageType.AsString, new CSCom.NPMessageNamepathData[] { data }, "test message"));
                 System.Threading.Thread.Sleep(100);
 
                 Console.WriteLine("Press <enter> to exit.");
@@ -45,7 +43,7 @@ namespace Tester
                 if(doSelfServer)
                     Console.ReadLine();
                 
-                clinet.Disconnect();
+                clinet.Stop();
                 clinet.Dispose();
                 clinet = null;
             }
@@ -58,17 +56,16 @@ namespace Tester
 
             if (doSelfServer)
             {
-                server.StopListening();
+                server.Stop();
                 server.Dispose();
                 server = null;
             }
         }
 
-        private static void Server_MessageRecived(object sender, EventArgs e)
+        private static void Server_MessageRecived1(object sender, WebsocketPipe.WebsocketPipe<CSCom.NPMessage>.MessageEventArgs e)
         {
             CSCom.CSCom server = (CSCom.CSCom)sender;
-            CSCom.NPMessage map = server.PendingMessages.Dequeue();
-            Console.WriteLine("Recived map with " + map.Namepaths.Count + " name paths");
+            Console.WriteLine("Recived map with " + e.Message.Namepaths.Count + " name paths");
         }
     }
 }

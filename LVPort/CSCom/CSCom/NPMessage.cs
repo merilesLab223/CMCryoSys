@@ -27,35 +27,9 @@ namespace CSCom
             MessageType = MessageType;
         }
 
-        ///// <summary>
-        ///// Make a JMessage from raw data
-        ///// </summary>
-        ///// <param name="namepaths"></param>
-        ///// <param name="values"></param>
-        //public NPMessage(NPMessageType type, string[] namepaths, int[][] sizes, int[][] idxs, object[] values, string message = null)
-        //{
-        //    Message = message;
-        //    MessageType = MessageType;
-
-        //    m_NamePaths = new NPMessageNamepathData[namepaths.Length];
-        //    for (int i=0;i<namepaths.Length;i++)
-        //    {
-        //        NPMessageNamepathData npd = new NPMessageNamepathData();
-        //        npd.idxs = idxs[i];
-        //        npd.Namepath = namepaths[i];
-        //        npd.Size = sizes[i];
-        //        npd.Value = values[i];
-        //    }
-        //}
-
         #endregion
 
         #region Properties
-
-        /// <summary>
-        /// The index of the method to send the repsonse to, when such a response arrives.
-        /// </summary>
-        private long ResponseIndex = -1;
 
         /// <summary>
         /// The message type.
@@ -100,9 +74,7 @@ namespace CSCom
     public enum NPMessageType : int
     {
         Invoke = 1,
-        Set = 2,
-        Get = 4,
-        AsString=8
+        AsString = 2
     }
 
     /// <summary>

@@ -1,10 +1,23 @@
 classdef LVPortCom < handle
-    %LVPORTCOM INTERNAL!! Methods to communicate between labview and matlab, using
-    %the object maps.
+    %LVPORTCOM INTERNAL!! Methods for communication 
     
+    % construction
     methods
         function [obj]=LVPortCom()
-           obj.TempObjects=AutoRemoveAutoIDMap(60); 
+        end
+    end
+    
+    properties (SetAccess = private)
+        ComInitialized=false;
+        ComId='';
+    end
+    
+    methods (Access = protected)     
+        function [id]=InitializeRemote(p,id,comId)
+            id=LVPort.Global.setById(id,p);
+            p.ID=id;
+            p.ComInitialized=true;
+            p.ComId=comId;
         end
     end
     
