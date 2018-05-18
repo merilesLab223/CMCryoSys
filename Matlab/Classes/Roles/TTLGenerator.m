@@ -71,6 +71,17 @@ classdef TTLGenerator < TimeBasedSignalGenerator
             obj.PulseTrain(1,tup,tdown,c);
         end
         
+        function ClockSignal(obj,dur,freq,c,dutyCycle)
+            if(~exist('dutyCycle','var'))
+                dutyCycle=0.5;
+            end
+            tup=1/(freq*obj.timeUnitsToSecond);
+            tdown=tup*(1-dutyCycle);
+            tup=tup*dutyCycle;
+            n=ceil(dur/(tup+tdown));
+            obj.PulseTrain(n,tup,tdown,c);
+        end
+        
         function PulseTrain(obj,n,tup,tdown,c)
             if(~exist('c','var'))c=obj.Channel;end            
             if(~exist('n','var'))n=1;end
@@ -113,8 +124,9 @@ classdef TTLGenerator < TimeBasedSignalGenerator
                 
                 if(idata.n>1)
                     ld=ld*idata.n;
-                    ti=repmat(ti,1,idata.n);
-                    bi=repmat(bi,1,idata.n);
+                    repn=floor(idata.n);
+                    ti=repmat(ti,1,repn);
+                    bi=repmat(bi,1,repn);
                 end
                 
                 % updating times.

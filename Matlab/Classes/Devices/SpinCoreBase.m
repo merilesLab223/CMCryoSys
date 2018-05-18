@@ -9,7 +9,7 @@ classdef SpinCoreBase < Device & TimeBasedObject
             
             obj.CoreAPI=SpinCoreAPI(LibraryFile,LibraryHeaders,LibraryName); % redo.
             obj.setDeviceRate(obj.DeviceRate);
-            obj.setClockRate(obj.Rate);
+            obj.setClockRate(obj.DeviceRate);
         end
     end
     
@@ -92,7 +92,7 @@ classdef SpinCoreBase < Device & TimeBasedObject
         function []=setClockRate(obj,rate)
             setClockRate@TimeBasedObject(obj,rate);
             obj.MinimalInstructionTime=...
-                obj.MinInstructionClockTicks/obj.Rate;            
+                obj.MinInstructionClockTicks/obj.DeviceRate;            
             obj.TimebaseMultiplier=obj.DeviceRate/obj.Rate;
         end
         

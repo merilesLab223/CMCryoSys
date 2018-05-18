@@ -6,10 +6,16 @@ function [t,data] = DisplayScanAsStream(rslts)
     end
     if(isa(rslts,'StreamCollector'))
         [data,dt]=rslts.getData();
-        [t,data]=StreamToTimedData(data,1,dt);
+        if(~isempty(data))
+            [t,data]=StreamToTimedData(data,1,dt);
+        else
+            return;            
+        end
     else
         [t,data]=StreamToTimedData(rslts);
     end
+    t=t(1:end-1);
+    data=data(1:end-1);
     comp=toc;
     if(comp>1000)
         disp(['Long display time for strea [ms]: ',num2str(comp)]);

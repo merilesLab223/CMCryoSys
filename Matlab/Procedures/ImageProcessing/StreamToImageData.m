@@ -1,78 +1,91 @@
 function [img,updatedIdxs] = StreamToImageData(rslt,coln,rown,dwellTime,multidir)
     % splicing according to dwell time.
-    if(~exist('multidir','var'))multidir=0;end
-    % do not update anything, create zero image.
-    img=zeros(coln,rown);
-    updatedIdxs=[];
-    
-    comp=[];
-    tlen=0;
-    blen=length(rslt);
-    tic;
-    for i=1:blen
-        rdata=rslt{i};
-        sdata=size(rdata);   
-    	tlen=tlen+sdata(1);
+    if(~exist('multidir','var'))
+        multidir=0;
     end
     
-    if(tlen==0)
+    % do not update anything, create zero image.
+    updatedIdxs=[];
+    img=zeros(coln,rown);
+    tlen=numel(img);
+    
+    % get the data vectorl
+    [imgvector,ts]=ResultsStreamToVector(rslt);
+    
+    % just nothing here.
+    if(length(imgvector)<2)
         return;
     end
-    comp(end+1)=toc;
     
-    tic;
-    imgvector=zeros(tlen,2);
-    sidx=1;
-    for i=1:blen
-        rdata=rslt{i};
-        sdata=size(rdata);  
-        if(sdata(1)==0)
-            continue;
-        end
-        %sidx=r*coln;
-        eidx=sidx+sdata(1)-1;
-        imgvector(sidx:eidx,:)=rdata;
-        sidx=eidx+1;
-    end
-    comp(end+1)=toc;
-    % data collected proecssing the vector.
-    tic;
-    imgvector(:,1)=imgvector(:,1)-imgvector(1,1); % remove zero.
-    lbins=coln*rown;
-    comp(end+1)=toc;
-    minT=imgvector(1,1);
-    deltaT=(imgvector(tlen,1)-imgvector(1,1));
-    
-    if(deltaT>coln*rown*dwellTime)
-        deltaT=coln*rown*dwellTime;
+    minT=ts(1);
+    deltaT=(ts(end)-minT);
+    totalTime=coln*rown*dwellTime;
+    maxIndex=find(ts>totalTime,1);
+    if(isempty(maxIndex))
+        maxIndex=length(ts);
     end
     
-    ticksPerPixel=round(tlen*dwellTime/deltaT);
-    tic;
+    % check if not over the total time.
+    % if so chop.
+    if(maxIndex<length(ts))
+        % chop.
+        imgvector(maxIndex:end,:)=[];
+        ts(maxIndex:end)=[];
+    end
+    % maxIndex./deltaT; t per timebin.
+    % tlen./dwellTime
+    timePerDataBin=deltaT/maxIndex;
+    ticksPerPixel=dwellTime./timePerDataBin;
+    
     if(ticksPerPixel<1)
         % case we are missing data.
-        % case we are missing data.
-        ts=imgvector(:,1);
-        ts=ts(ts>=minT & ts<deltaT);
-        ts=round(ts./dwellTime)+1;
-        updatedIdxs=1:(coln*rown);
-        img(ts)=imgvector(1:length(ts),2);
+        % that is the total number of pxiels is
+        % larger then the number of tbins.
+%         keepIdxs=ts>=minT & ts<deltaT;
+%         ts=ts(keepIdxs);
+%         imgvector=(keepIdxs);
+%         
+        updatedIdxs=floor(ts./dwellTime)+1; % find appropriate indexs.
+        rmvidxs=updatedIdxs>numel(img) | updatedIdxs<1;
+        updatedIdxs(rmvidxs)=[];
+        imgvector(rmvidxs)=[];
+        
+        img(updatedIdxs)=imgvector;
     else
-        curPixel=floor(tlen/ticksPerPixel);
+        % case where we need to match 
+        % pixels to appropriate arrays.
+        
+        % maximal pixel.
+        curPixel=floor(maxIndex/ticksPerPixel);
         if(curPixel>coln*rown)
             curPixel=coln*rown;
         end
-        totalPixels=curPixel*ticksPerPixel;
         
-        updatedIdxs=1:curPixel;
+        atImgIdxs=floor((ts-minT)./dwellTime)+1;
+        removeIdxs=atImgIdxs>curPixel | atImgIdxs<1;
+        atImgIdxs(removeIdxs)=[];
+        imgvector(removeIdxs)=[];
         
-        if(ticksPerPixel==1)
-            img(updatedIdxs)=imgvector(1:totalPixels,2);
-        else
-            img(updatedIdxs)=sum(reshape(imgvector(1:totalPixels,2),ticksPerPixel,curPixel));
-        end
+        %=unique(atImgIdxs);
+        dnorm=accumarray(atImgIdxs,ones(size(atImgIdxs)));
+        dsum=accumarray(atImgIdxs,imgvector);
+        updatedIdxs=min(atImgIdxs)+(1:length(dnorm))-1;
+        img(updatedIdxs)=dsum./dnorm;
+%         
+%         % build the index copy matrix.
+%         totalPixels=curPixel*ticksPerPixel;
+%         if(totalPixels>0)
+%             
+% 
+%             if(ticksPerPixel==1)
+%                 img(updatedIdxs)=imgvector(1:totalPixels,1);
+%             else
+%                 img(updatedIdxs)=sum(reshape(imgvector(1:totalPixels,1),ticksPerPixel,curPixel));
+%             end
+%         else
+%             updatedIdxs=[];
+%         end
     end
-    comp(end+1)=toc;
     
     if(multidir)
         img(:,2:2:end)=img(end:-1:1,2:2:end);
