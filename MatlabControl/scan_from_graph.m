@@ -1,0 +1,9 @@
+[x0,y0,w,h]=scanRegionFromGraph();
+if(w>h)
+    dist=w;
+else
+    dist=h;
+end
+scan_skipcurpos=1;
+scan;
+scan_skipcurpos=0;
