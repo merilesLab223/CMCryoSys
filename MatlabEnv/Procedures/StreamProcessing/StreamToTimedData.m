@@ -43,7 +43,7 @@ function [t,strm] = StreamToTimedData(rslts,tbin,dt)
     sstrm=size(strm);
     chann=sstrm(2);
     
-    strm=sum(reshape(strm,binn,chann,ticn),1);
+    strm=sum(reshape(strm,binn,chann,ticn),1)./binn;
     strm=reshape(strm,ticn,chann);
 end
 

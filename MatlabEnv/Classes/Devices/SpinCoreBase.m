@@ -117,26 +117,16 @@ classdef SpinCoreBase < Device & TimeBasedObject
             api.Start();
         end
         
-        function [cflags]=ChannelToFlags(obj,c)
-            c=sort(c);
-            lc=length(c);
-            maxc=max(c);
-            ci=1;
-            n=0;
-            bits=[];
-            while(ci<=lc && n<=maxc)
-                if(c(ci)==n)
-                    % same number
-                    ci=ci+1; %next.
-                    bits(end+1)=1;
-                else
-                    bits(end+1)=0;
-                end
-                n=n+1;
+        function [cflags]=ChannelValToFlags(obj,c,val)
+            c=sort(c)+1;
+            sval=size(val);
+            cflags=zeros(sval(1));
+            for i=1:sval(1)
+                bi=zeros(1,32);
+                bi(c)=val(i,:);
+                cflags(i)=bi2de(bi);
             end
-            cflags=bi2de(bits);
         end
     end
-        
 end
 

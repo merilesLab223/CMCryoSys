@@ -1,4 +1,4 @@
-classdef ExpCore<handle
+classdef ExpCore < handle
     methods (Static)
         function [srv]=GetServer()
             persistent server;
@@ -24,8 +24,17 @@ classdef ExpCore<handle
         function [exp]=GetExperiment(expID)
             server=ExpCore.GetServer();
             exp=[];
-            if(server.ActiveExperiments.contains(expID))
-                exp=server.ActiveExperiments(expID);
+            if(server.WebsocketBindings.contains(expID))
+                exp=server.WebsocketBindings(expID);
+            end
+        end
+        
+        function [exp]=GetLastExperiment()
+            server=ExpCore.GetServer();
+            if(isempty(server.LastExperimentOpenedID))
+                exp=[];
+            else
+                exp=ExpCore.GetExperiment(server.LastExperimentOpenedID);
             end
         end
     end

@@ -1,4 +1,4 @@
-classdef (ConstructOnLoad) DAQEventStruct < EventStruct
+classdef (ConstructOnLoad) DAQEventStruct <  EventStruct
     %EVENTSTRUCT General event data.
     %   Used as catch all event data.
     properties

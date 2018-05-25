@@ -10,10 +10,10 @@ daq.reset();
 
 % call stopall() to stop the stream (or clear).
 abort=0;
-useAnalog=1;
+useAnalog=0;
 
 % max 5 minutes.
-usePulseBlasterAsClock=0;
+usePulseBlasterAsClock=1;
 
 % hard connections.
 % port0/line1 ->USER1 ->PFI0 : Trigger.
@@ -37,9 +37,9 @@ if(~usePulseBlasterAsClock)
     clock.setClockRate(clockrate);
     clock.clockFreq=clockFreq;
 else
-    clock=SpinCoreTTLGenerator(); % loopback clock.
+    clock=SpinCoreClock(); % loopback clock.
     clock.setClockRate(300e6);
-    clock.Channel=[0,1];
+    clock.Channel=0;
     clockTerm='pfi0';
 end
 
@@ -52,9 +52,7 @@ reader.configure();
 clock.configure();
 
 if(usePulseBlasterAsClock)
-    clock.clear();
-    clock.Pulse(1,1,1);
-    clock.ClockSignal(1000*60*5,clockFreq,0);
+    clock.clockFreq=clockFreq;
 end
 
 %% Data colelctor.

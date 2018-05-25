@@ -46,6 +46,13 @@ function [vec,t] = ResultsStreamToVector(rslts,dt)
         vec(sidx:eidx,:)=rdata(:,2:end);
         sidx=eidx+1;
     end
+    
+    igc=3;
+    if(tlen>igc)
+        for i=1:igc
+            vec(i,:)=vec(igc+1,:);
+        end            
+    end
     %t=median(diff(t)).*[0:tlen-1]';
 end
 

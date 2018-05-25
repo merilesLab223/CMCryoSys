@@ -32,9 +32,9 @@ classdef SpinCoreTTLGenerator < SpinCoreBase & TTLGenerator
             if(loopn)
                 loopi=loops{1};
             end
-            bi=zeros(1,32);
             for i=1:sdata(1)
                 % getting the data.
+                bi=zeros(1,32);
                 bi(1:sdata(2))=data(i,:);
                 duri=dur(i);
                 flags=bi2de(bi);

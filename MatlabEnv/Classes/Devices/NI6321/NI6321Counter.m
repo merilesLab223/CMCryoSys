@@ -7,6 +7,10 @@ classdef NI6321Counter < NI6321Core & TimedMeasurementReader
         %niCounterChannel=[];
         %niCounterTimebase=[];
     end
+        
+    properties
+        UseTimedDataUnits=true;
+    end
     
     properties (Access = private)
         lastDataValue=[];
@@ -28,6 +32,12 @@ classdef NI6321Counter < NI6321Core & TimedMeasurementReader
                 data=diff([obj.lastDataValue;data]);
             end
             obj.lastDataValue=loval;
+            
+            % convert data to timed units.
+            if(obj.UseTimedDataUnits)
+                cntToTimedUnits=1/(obj.Rate*obj.timeUnitsToSecond);
+                data=data/cntToTimedUnits;
+            end  
         end 
     end
    

@@ -1,11 +1,9 @@
-classdef NI6321Clock < NI6321Core
+classdef NI6321Clock < NI6321Core & Clock
     %NI6321COUNTER Summary of this class goes here
     %   Detailed explanation goes here
     
     properties
         ctrName='ctr3'; % the counter channel.
-        clockFreq=10000;
-        dutyCycle=0.5; % in % of freq.
         %niCounterChannel=[]; 
     end
     

@@ -1,5 +1,8 @@
-function [t,data] = DisplayScanAsStream(rslts)
+function [t,data] = DisplayScanAsStream(rslts,doffset)
     tic;
+    if(~exist('doffset','var') || doffset<1)
+        doffset=1;
+    end
     if(isempty(rslts))
         disp('Called display DisplayScanAsStream with no results');
         return;
@@ -14,8 +17,8 @@ function [t,data] = DisplayScanAsStream(rslts)
     else
         [t,data]=StreamToTimedData(rslts);
     end
-    t=t(1:end-1);
-    data=data(1:end-1);
+    t=t(doffset:end);
+    data=data(doffset:end);
     comp=toc;
     if(comp>1000)
         disp(['Long display time for strea [ms]: ',num2str(comp)]);

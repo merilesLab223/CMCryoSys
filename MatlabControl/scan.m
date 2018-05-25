@@ -10,8 +10,8 @@ daq.reset();
 
 %% Device preparation.
 % devices - time based.
-useAnalog=1;
-usePulseBlasterAsClock=0;
+useAnalog=0;
+usePulseBlasterAsClock=1;
 
 pos=NI6321Positioner2D('Dev1');
 if(useAnalog)
@@ -24,9 +24,9 @@ if(~usePulseBlasterAsClock)
     clock=NI6321Clock('Dev1'); % loopback clock.
     clock.ctrName='ctr3';
 else
-    clock=SpinCoreTTLGenerator(); % loopback clock.
+    clock=SpinCoreClock(); % loopback clock.
     clock.setClockRate(300e6);
-    clock.Channel=[0,1];
+    clock.Channel=0;
 end
 
 
@@ -76,18 +76,17 @@ multidir=0;
 VoltToUm=172;
 
 % image parameters.
-n=2000; % number of pixels
+n=1000; % number of pixels
 whratio=1.56;
 
-dt=60000;% in ms.
+dt=10000;%5*60000;% in ms.
 asDwellTime=0; % if 1, then dt is a signle pixel time. Otherwise dt/n^2.
 
 if(~exist('x0','var')||~exist('scan_skipcurpos','var')||~scan_skipcurpos)
-    x0=-50;
-    y0=-50;
-    dist=400; %[um] (= Width,Height) square image.
+    x0=0;
+    y0=0;
+    dist=300; %[um] (= Width,Height) square image.
 end    
-
 
 %% Do converions.
 % convert back to volts.
@@ -151,16 +150,9 @@ reader.setClockRate(cfreq); % uses external clock.
 
 % If pulseblaster is clock, need to configure the sequnce.
 if(usePulseBlasterAsClock)
-    clock.clear();
-    clock.Pulse(1,1,1);
-    clock.ClockSignal(totalTime*1.5,cfreq,0);
-%     tup=1/(2*cfreq);
-%     tup=tup./clock.timeUnitsToSecond;
-%     pcount=(totalTime.*1.1./tup);
-%     tdown=tup;
-%     clock.PulseTrain(pcount,tup,tdown);
+    clock.clockFreq=cfreq;
 else
-    clock.setClockRate(crate);
+    clock.setClockRate(cfreq);
     clock.clockFreq=cfreq;
 end
 dcol.setClockRate(crate);
