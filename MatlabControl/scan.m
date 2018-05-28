@@ -6,12 +6,32 @@ InitZLib;
 clear pos;
 clear reader;
 clear clock;
-daq.reset();
+%daq.reset();
 
-%% Device preparation.
+%% Image scan example.
 % devices - time based.
 useAnalog=0;
 usePulseBlasterAsClock=1;
+
+% what to do?
+multidir=1;
+doMultiScan=0;
+
+% calibration.
+VoltToUm=172;
+whratio=1.56;
+
+% image parameters.
+n=250; % number of pixels.
+dt=1000;%5*60000;% in ms.
+asDwellTime=0; % if 1, then dt is a signle pixel time. Otherwise dt/n^2.
+if(~exist('x0','var')||~exist('scan_skipcurpos','var')||~scan_skipcurpos)
+    x0=0;
+    y0=0;
+    dist=100; %[um] (= Width,Height) square image.
+end    
+
+%% Device preparation.
 
 pos=NI6321Positioner2D('Dev1');
 if(useAnalog)
@@ -58,10 +78,11 @@ else
 end
 
 reader.externalClockTerminal=clockTerm;
+pos.externalClockTerminal=clockTerm;
 
 % adding measurement reader.
 dcol=TimedDataCollector(reader);
-
+scol=StreamCollector(reader);
 
 %% Configure devices.
 % call to configure.
@@ -69,67 +90,16 @@ pos.configure();
 reader.configure();
 clock.configure();
 
-%% Image scan example.
-% clearing previous path
-doMultiScan=0;
-multidir=0;
-VoltToUm=172;
-
-% image parameters.
-n=1000; % number of pixels
-whratio=1.56;
-
-dt=10000;%5*60000;% in ms.
-asDwellTime=0; % if 1, then dt is a signle pixel time. Otherwise dt/n^2.
-
-if(~exist('x0','var')||~exist('scan_skipcurpos','var')||~scan_skipcurpos)
-    x0=0;
-    y0=0;
-    dist=300; %[um] (= Width,Height) square image.
-end    
-
-%% Do converions.
-% convert back to volts.
-dist=dist./VoltToUm;
-x0=x0./VoltToUm;
-y0=y0./VoltToUm;
-
-width=dist;
-height=dist;
-
-posOffset=10*multidir;
-mOffset=0*multidir;
-
+%% Find measurment rates.
 if(asDwellTime)
     totalTime=dt.*n^2;
 else
     totalTime=dt;
 end
 dwellTime=totalTime/(n*n);
-pos.interpolationMethod='linear';
-imgRange=[x0-width/2,y0-height/2,width/n,height/n]*VoltToUm;
 
-% correction  for x;
-width=width*whratio;
-
-%pos.wait(tOffset);
-% added weights as 1, but can be anything.
-disp(['Image scan of ',num2str(n*n),...
-    ' pixels, dt[ms]: ',num2str(dwellTime),'. MaxT[ms]: ',num2str(totalTime)]);
-WriteImageScan(pos,x0-width/2,y0-height/2,width,height,n,n,dwellTime,...
-    'multidirectional',multidir,'timeOffset',posOffset);
-
-% goto 0,0 and wait 100;
-pos.GoTo(0,0,100);
-%goto(0,0);
-
-%% waiting for origin to be resored.
-pos.toRounded(1);
-
-%% adjust the clocks.
-% find min time.
-crate=floor(2/(pos.findMinimalTime()*pos.timeUnitsToSecond));
-maxClockFreq=50000;
+crate=floor(2/(dwellTime*pos.timeUnitsToSecond));
+maxClockFreq=100000;
 if(crate>maxClockFreq)
     warntext=['LOSS OF DATA? The required clock rate, ',num2str(crate),' is above the '...
         ,'maximal rate available. Clock rate reduced to 200K. Possible loss of data.'];
@@ -141,11 +111,48 @@ elseif(crate<1)
     disp(warntext);
     crate=1;
 end
-clockfreqToRate=2;
+readerTOffset=0.19+pos.secondsToTimebase(1/crate);
+%% Do converions.
+% convert back to volts.
+dist=dist./VoltToUm;
+x0=x0./VoltToUm;
+y0=y0./VoltToUm;
+
+width=dist;
+height=dist;
+
+%posOffset=0;%pos.secondsToTimebase(1/crate);
+%mOffset=0*multidir;
+
+pos.interpolationMethod='linear';
+imgRange=[x0-width/2,y0-height/2,width/n,height/n]*VoltToUm;
+
+% correction  for x;
+width=width*whratio;
+
+%pos.wait(tOffset);
+% added weights as 1, but can be anything.
+disp(['Image scan of ',num2str(n*n),...
+    ' pixels, dt[ms]: ',num2str(dwellTime),'. MaxT[ms]: ',num2str(totalTime)]);
+WriteImageScan(pos,x0-width/2,y0-height/2,width,height,n,n,dwellTime,...
+    'multidirectional',multidir,'interpMethod','linear');
+
+% goto 0,0 and wait 100;
+disp(pos.curT);
+pos.GoTo(0,0,100);
+%pos.GoTo(0,0,100);
+%goto(0,0);
+
+%% waiting for origin to be resored.
+%pos.toRounded(1);
+
+%% adjust the clocks.
+% find min time.
+clockfreqToRate=1;
 cfreq=crate*clockfreqToRate;
 
 % adjusted to clock. (cfreq>crate)
-pos.setClockRate(crate);
+pos.setClockRate(cfreq); % uses external clock.
 reader.setClockRate(cfreq); % uses external clock.
 
 % If pulseblaster is clock, need to configure the sequnce.
@@ -155,7 +162,9 @@ else
     clock.setClockRate(cfreq);
     clock.clockFreq=cfreq;
 end
-dcol.setClockRate(crate);
+dcol.setClockRate(cfreq);
+scol.setClockRate(cfreq);
+scol.CollectDT=totalTime*2+3000;
 
 disp(['Measureing with, sampling rate: ',num2str(crate),' (clock freq: ',num2str(cfreq),' [hz])']);
 %% Measurement example for image
@@ -166,23 +175,11 @@ if mbins<10
 end
 disp(['Measureing ',num2str(mbins),' mbins at dcol T=',num2str(dcol.curT)]);
 mtdt=totalTime/mbins;
+tickTime=reader.secondsToTimebase(1/cfreq);
+reader.SetMaxReadChunkSize(mtdt/(2*tickTime));
 %dcol.MeasureAt(dcol.curT,totalTime);
 % we can reduce the clock freq to the rate by 5.
-dcol.wait(posOffset+mOffset);
 dcol.Measure(ones(mbins,1)*mtdt); % measure by durations.
-
-% without bins (or a single bin)
-% dcol.Measure(0,totalTime);
-
-%% Measurement example for the nv.
-% dcol.toRounded(1);
-% for i=1:nvrepeat
-%     for j=1:snv(2)
-%         dcol.Measure(nvt(j),...
-%             @(t,d)sum(d)); % adjusted to curT (auto advance).
-%     end
-% end
-
 
 %% Draw final path.
 % drawing the generated path (compilated).
@@ -206,8 +203,10 @@ while(doMultiScan || firstScan)
     pos.stop();
     clock.stop();
     reader.stop();
+    scol.stop();
     dcol.stop();
     dcol.reset();
+    scol.reset();
     
     disp('Prepare devices..');
     pos.prepare();
@@ -215,11 +214,13 @@ while(doMultiScan || firstScan)
     reader.prepare();
     %trigger.prepare();
     dcol.prepare();
-
+    scol.prepare();
+    
     disp('Running devices');
-    dcol.start();
     pos.run();
     reader.run();
+    dcol.start();
+    scol.start();
 
     % running the trigger.
     disp('Starting clock...');
@@ -249,7 +250,7 @@ while(doMultiScan || firstScan)
             lastCompleted=curCompleted;
         end
 
-        lastimg=DisplayScanAsImage(dcol.Results,n,n,dwellTime,lastimg,multidir,imgRange);
+        lastimg=DisplayScanAsImage(dcol.Results,n,n,dwellTime,multidir,readerTOffset,lastimg,imgRange);
         if(remainingTime<=0)
             break;
         end
@@ -262,19 +263,28 @@ disp('Stopping..');
 pos.stop();
 reader.stop();
 clock.stop();
+dcol.stop();
+scol.stop();
 
 disp('Sequnce Complete');
 
 
 %% Display data. (only the image).
 dcol.finalizePending();
-subplot(1,1,1);
+
 if(~isempty(dcol.Results))
     imgrslt=dcol.Results(1:mbins);
     nvrslt=dcol.Results(1+mbins:end);
     
     tic;
-    [img]=DisplayScanAsImage(dcol.Results,n,n,dwellTime,lastimg,multidir,imgRange);
+    subplot(1,1,1);
+    [img]=DisplayScanAsImage(dcol.Results,n,n,dwellTime,multidir,readerTOffset,lastimg,imgRange);
+%     subplot(1,2,2);
+%     %plot(t,x,t,y,mt+mdt,zeros(length(mt),1),'*');
+%     rmat=scol.getResultsMatrix();
+%     toff=0.19+pos.secondsToTimebase(1/cfreq);
+%     [img]=StreamToImageData(rmat,n,n,dwellTime,multidir,toff);
+    %imagesc(img);
     %img=StreamToImageData(imgrslt,n,n,dwellTime,multidir);
     comp=toc;
     disp(['Created image data in [ms] ',num2str(comp),...

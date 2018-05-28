@@ -20,6 +20,7 @@ classdef ImageScan < Experiment
         ReaderAmplitude=0;
         PositionTracking=false;
         ScanProgress=0;
+        ImageProperties=struct();
     end
     
     % privately set properties.
@@ -148,7 +149,6 @@ classdef ImageScan < Experiment
     end
     
     % Positioning
-    
     methods
         function setPosition(exp,x,y)
             exp.Position.X=x;
@@ -169,26 +169,27 @@ classdef ImageScan < Experiment
             
             exp.m_positionUpdateCalledWhileUpdatingPosition=false;
             
-            % reset the positioner and clock.
-            wasRunning=exp.Clock.IsRunning;
-            
             exp.Pos.stop();
             exp.Pos.clear();
 
             % set the single access clock rate.
             exp.Pos.setClockRate(1000);
+            exp.Pos.triggerTerm=[];
+            exp.Pos.externalClockTerminal=[];
             
             exp.Pos.GoTo(exp.Position.X,exp.Position.Y);
             exp.Pos.prepare();
-            exp.Clock.prepare();
-            
             exp.Pos.run();
-            if(~wasRunning)
-                exp.Clock.run();
-            end
+            
             exp.StatusFlags.IsSettingPosition=false;
 
             exp.update('StatusFlags');
+            
+            disp(['Updated galvo positions to (x,y) ',num2str(exp.Position.X),...
+                ', ',num2str(exp.Position.Y)]);
+            
+            pause(0.001);
+            exp.Pos.stop();
             
             % callback.
             if(exp.m_positionUpdateCalledWhileUpdatingPosition)
@@ -311,20 +312,12 @@ classdef ImageScan < Experiment
             if(exp.SystemConfig.UseInternalClock)
                 exp.Devices.set('ni_clock','clock',NI6321Clock(niDevName));
                 exp.Clock.ctrName='ctr3';
-                clockTerm='pfi14';
-            else
                 
+            else
+                exp.Devices.set('spincore_clock','clock',SpinCoreClock());
+                exp.Clock.setClockRate(300e6);
             end
 
-            
-            triggerTerm=clockTerm;
-
-            exp.Pos.triggerTerm=triggerTerm;
-            exp.Reader.externalClockTerminal=clockTerm;
-            
-            if(exp.SystemConfig.UseAnalogInputA0)
-                exp.Reader.triggerTerm=triggerTerm;
-            end
         end
         
         function resetStatusFlags(exp)
@@ -335,9 +328,47 @@ classdef ImageScan < Experiment
                 'PossibleLossOfData',false...
                 );            
         end
+  
         
-        function stopAllDevices(exp)
-            disp('Stopping all devices and deleting flags');
+    end
+
+    properties(Access = private)
+        stopDevicesEvDispatch=[];
+    end
+    
+    methods (Access = protected)
+        function doAsyncStopAllDevices(exp,s,e)
+            exp.stopAllDevices(false);
+        end
+        
+        function stopAllDevices(exp,async)
+            % first stop the clock right away.
+            if(exist('async','var') && async>0)
+                if(isempty(exp.stopDevicesEvDispatch))
+                    exp.stopDevicesEvDispatch=...
+                        events.CSDelayedEventDispatch();
+                    
+                    exp.stopDevicesEvDispatch.addlistener(...
+                        'Ready',@exp.doAsyncStopAllDevices);
+                end
+                exp.stopDevicesEvDispatch.trigger(double(async));
+                return;
+            end
+            
+            for i=1:4
+                try
+                    exp.Clock.stop();
+                    exp.Reader.stop(); 
+                    exp.Pos.stop();
+                    break;
+                catch err
+                    if(i==4)
+                        error(err);
+                    end
+                end
+            end
+            
+            disp('Stopped devices.');
 
             exp.resetStatusFlags();
 
@@ -353,21 +384,9 @@ classdef ImageScan < Experiment
             exp.ScanDataCollector=[];
             
             exp.IsWorking=false;
-            
             exp.update('StatusFlags');
-            
-            disp('Deleted all dependencies now stopping sessions');
-            
-            % stopping sessions.
-            try                
-                exp.Clock.stop();
-                exp.Reader.stop();
-                exp.Pos.stop();         
-            catch err
-                disp(err.message);
-            end
-        end
-        
+            disp('Cleared collectors.');
+        end        
     end
     
     % streaming.
@@ -404,16 +423,32 @@ classdef ImageScan < Experiment
                 clockrate=1;
             end
  
-            exp.Clock.setClockRate(clockrate);
-            exp.Clock.clockFreq=clockrate*2;
-            exp.Reader.setClockRate(clockrate*2);
+            if(exp.SystemConfig.UseInternalClock)
+                exp.Clock.setClockRate(clockrate);
+            end
+            exp.Clock.clockFreq=clockrate;
+            exp.Reader.setClockRate(clockrate);
+            
+            if(exp.SystemConfig.UseInternalClock)
+                clockTerm='pfi14';
+            else
+                clockTerm='pfi0';
+            end
+            triggerTerm=clockTerm;
+            exp.Reader.externalClockTerminal=clockTerm;
+            if(exp.SystemConfig.UseAnalogInputA0)
+                exp.Reader.triggerTerm=triggerTerm;
+            end
             
             disp('Configuring data collector.');
             
             % configuring the data collector.
             exp.ConfigureStreamDataCollector(clockrate);
+
             
             disp('Prepare stream');
+            exp.Reader.SetMaxReadChunkSize(...
+                exp.StreamDataCollector.UpdateDT/(exp.Reader.getTimebase));
             
             % preparing
             exp.Reader.prepare();
@@ -470,8 +505,7 @@ classdef ImageScan < Experiment
             
             exp.StatusFlags.IsStreaming=isStreaming;
             
-            disp('Starting scan. Was streaming:');
-            disp(isStreaming);
+            disp('Starting scan.');
             exp.IsWorking=true;
             
             % Calculating scan params.
@@ -480,6 +514,15 @@ classdef ImageScan < Experiment
             y0=exp.ScanParameters.Y;
             w=exp.ScanParameters.Width;
             h=exp.ScanParameters.Height;
+            
+            exp.ImageProperties.Xn=n;
+            exp.ImageProperties.Yn=n;
+            exp.ImageProperties.X=x0;
+            exp.ImageProperties.Y=y0;
+            exp.ImageProperties.Width=w;
+            exp.ImageProperties.Height=h;
+            exp.ImageProperties.FromCenter=exp.ScanParameters.FromCenter;
+            exp.update('ImageProperties');
             
             if(exp.ScanParameters.FromCenter)
                 x0=x0-w/2;
@@ -495,49 +538,66 @@ classdef ImageScan < Experiment
             
             % clock rates and configurations.
             % calculated by the position clock rate(niquist);
-            posClockRate=floor(exp.ScanConfig.ClockRate);
+            measureClockRate=floor(exp.ScanConfig.ClockRate);
             
             if(exp.ScanConfig.AutoAdjustRates)
                 % needs recalculation according to dwell time.
-                posClockRate=round(2./(dwell*exp.Pos.timeUnitsToSecond));
+                measureClockRate=round(2./(dwell*exp.Pos.timeUnitsToSecond));
                 % validating the rates to limits.
                 exp.StatusFlags.PossibleLossOfData=false;
-                if(posClockRate<1)
-                    posClockRate=1;
-                elseif(posClockRate*2>exp.ScanConfig.MaxClockRate)
-                    posClockRate=floor(exp.ScanConfig.MaxClockRate);
+                if(measureClockRate<1)
+                    measureClockRate=1;
+                elseif(measureClockRate>exp.ScanConfig.MaxClockRate)
+                    measureClockRate=floor(exp.ScanConfig.MaxClockRate);
                     exp.StatusFlags.PossibleLossOfData=true;
                 end
-                exp.ScanConfig.ClockRate=posClockRate;
+                exp.ScanConfig.ClockRate=measureClockRate;
                 exp.update('ScanConfig');
             end
             
-            measureClockRate=posClockRate*2;
-
+            if(exp.SystemConfig.UseInternalClock)
+                clockTerm='pfi14';
+            else
+                clockTerm='pfi0';
+            end
+            triggerTerm=clockTerm;
+            
+            exp.Reader.externalClockTerminal=clockTerm;
+            exp.Pos.externalClockTerminal=clockTerm;
+            
+            exp.Pos.triggerTerm=triggerTerm;
+            if(exp.SystemConfig.UseAnalogInputA0)
+                exp.Reader.triggerTerm=triggerTerm;
+            end
+            
             % updating paramteters.
             exp.StatusFlags.IsScanning=true;
             exp.update('StatusFlags');
             
             % uses external clock.
-            exp.Pos.setClockRate(posClockRate);
+            exp.Pos.setClockRate(measureClockRate);
             exp.Reader.setClockRate(measureClockRate); 
-            exp.Clock.setClockRate(measureClockRate); % niquist.
+            if(exp.SystemConfig.UseInternalClock)
+                exp.Clock.setClockRate(clockrate);
+            end
             exp.Clock.clockFreq=measureClockRate;
             
             exp.Pos.clear();
-            disp('Scanning:');
-            disp(['@(',num2str(x0),',',num2str(y0),...
+            disp(['Scanning @(',num2str(x0),',',num2str(y0),...
                 ') +- (',num2str(w),',',num2str(h),') dt=',num2str(dwell),...
                 ' ',num2str(n),' Points']);
-            disp(['Measure Clock rate: ',num2str(measureClockRate),' Pos Clock Rate: ',posClockRate]);
+            disp(['Measure Clock rate: ',num2str(measureClockRate)]);
             
-            WriteImageScan(exp.Pos,x0,y0,w,h,n,n,dwell);
+            WriteImageScan(exp.Pos,x0,y0,w,h,n,n,dwell,...
+                'multidirectional',exp.ScanParameters.MultiDir,...
+                'interpMethod','linear');
+            
+            
             exp.Pos.GoTo(exp.Position.X,exp.Position.Y); % go and wait 10ms.
             
             % configuring readers.
             if(exp.ScanConfig.ShowStream)
                 exp.ConfigureStreamDataCollector(measureClockRate);
-                exp.StreamDataCollector.start();
             end
             
             % configuring the timed bin collector.
@@ -549,10 +609,24 @@ classdef ImageScan < Experiment
             end
             
             mtbins=ones(mbins,1)*bint;
-            disp(['Configured measurement timebins, sum: ',num2str(sum(mtbins)),...
-                ' ?= ',num2str(dwell*n^2)]);
+            tickTime=exp.Reader.secondsToTimebase(1/measureClockRate);
+            chnkdv=4;
+            maxchunk=bint/(chnkdv*tickTime);
             
-            disp(mtbins);
+            while(maxchunk>10000)
+                chnkdv=chnkdv+1;
+                maxchunk=bint/(chnkdv*tickTime);
+            end
+            
+            if(maxchunk<1)
+                maxchunk=1;
+            end
+            maxchunk=round(maxchunk);
+            exp.Reader.SetMaxReadChunkSize(maxchunk);
+%             disp(['Configured measurement timebins, sum: ',num2str(sum(mtbins)),...
+%                 ' ?= ',num2str(dwell*n^2)]);
+%             
+%             disp(mtbins);
             
             exp.ScanDataCollector=TimedDataCollector(exp.Reader);
             exp.ScanDataCollector.setClockRate(measureClockRate);
@@ -563,14 +637,21 @@ classdef ImageScan < Experiment
                 @exp.OnScanDataBinComplete);
             end
             exp.ScanDataCollector.Measure(mtbins);
-            exp.ScanDataCollector.start();
+            exp.ScanDataCollector.reset();
+            exp.StreamDataCollector.reset();  
             
             exp.Pos.prepare();
             exp.Reader.prepare();
             exp.Clock.prepare();
+            exp.ScanDataCollector.prepare();
+            exp.StreamDataCollector.prepare();            
             
             exp.Pos.run();
             exp.Reader.run();
+            exp.ScanDataCollector.start();
+            exp.StreamDataCollector.start();            
+            
+            % run the scan.
             exp.Clock.run();
         end
         
@@ -585,9 +666,9 @@ classdef ImageScan < Experiment
             if(isa(exp.StreamDataCollector,'StreamCollector'))
                 exp.StreamDataCollector.stop();
             end
-            exp.stopAllDevices();
+            
+            exp.stopAllDevices(true);
             exp.ProcessScanResults(rslts);
-
             exp.IsWorking=false;
             exp.update('IsWorking');
             if(wasStreaming)
@@ -604,7 +685,10 @@ classdef ImageScan < Experiment
         
         function ProcessScanResults(exp,rslts)
             n=exp.ScanParameters.N;
-            exp.ScanImage=StreamToImageData(rslts,n,n,exp.m_curScanDwellTime);
+            toff=0.19+exp.Pos.secondsToTimebase(1/exp.Pos.Rate);
+            exp.ScanImage=StreamToImageData(rslts,n,n,...
+                exp.m_curScanDwellTime,exp.ScanParameters.MultiDir,toff);
+            exp.ScanImage=single(exp.ScanImage);
             exp.update('ScanImage');            
         end
     end
@@ -637,6 +721,20 @@ classdef ImageScan < Experiment
         
         function testLoop(exp)
             exp.OnUpdateLoop();
+        end
+        
+        function LoadImage(exp,fpath)
+            exp.ScanImage=double(rgb2gray(imread(fpath))');
+            simg=size(exp.ScanImage);
+            exp.ImageProperties.Xn=simg(1);
+            exp.ImageProperties.Yn=simg(2);
+            exp.ImageProperties.X=0;
+            exp.ImageProperties.Y=0;
+            exp.ImageProperties.Width=simg(1);
+            exp.ImageProperties.Height=simg(2);
+            exp.ImageProperties.FromCenter=true;            
+            exp.update('ImageProperties');
+            exp.update('ScanImage');
         end
     end
     

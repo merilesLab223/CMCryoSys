@@ -5,13 +5,17 @@ function [vec,t] = ResultsStreamToVector(rslts,dt)
         return;
     end
     if(~iscell(rslts))
-        vec=rslts;
         srslt=size(rslts);
-        if(~exist('dt','var'))
-            dt=1;
+        if(srslt(2)==1)
+            vec=rslts;
+            if(~exist('dt','var'))
+                dt=1;
+            end
+            t=[1:srslt(1)].*dt;
+            return;
+        else
+            rslts={rslts};
         end
-        t=[1:srslt(1)].*dt;
-        return;
     end
 
     % find total length,

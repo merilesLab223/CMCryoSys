@@ -2,12 +2,7 @@ classdef SpinCoreBase < Device & TimeBasedObject
     % Implements a spin core base functionality. Communication with the
     % device and core hardware handles.
     methods
-        function obj = SpinCoreBase(LibraryFile,LibraryHeaders,LibraryName)
-            if(~exist('LibraryFile','var'))LibraryFile=SpinCoreAPI.DefaultLibFile;end
-            if(~exist('LibraryHeader','var'))LibraryHeaders=SpinCoreAPI.DefaultHeaderFiles;end
-            if(~exist('LibraryName','var'))LibraryName=SpinCoreAPI.DeafultLibName;end
-            
-            obj.CoreAPI=SpinCoreAPI(LibraryFile,LibraryHeaders,LibraryName); % redo.
+        function obj = SpinCoreBase()
             obj.setDeviceRate(obj.DeviceRate);
             obj.setClockRate(obj.DeviceRate);
         end
@@ -27,7 +22,14 @@ classdef SpinCoreBase < Device & TimeBasedObject
         
         % the minimal clock cycles for each device instruction.
         MinInstructionClockTicks=5;
-
+    end
+    
+    % property getters
+    methods
+        % returns the cire api.
+        function [api]=get.CoreAPI(obj)
+            api=obj.GetCoreAPI();
+        end
     end
      
     properties (Constant)
@@ -126,6 +128,21 @@ classdef SpinCoreBase < Device & TimeBasedObject
                 bi(c)=val(i,:);
                 cflags(i)=bi2de(bi);
             end
+        end
+    end
+    
+    % core api static getters and setters
+    methods (Static)
+        function api=GetCoreAPI(LibraryFile,LibraryHeaders,LibraryName)
+            persistent coreapi;
+            if(isempty(coreapi))                
+                if(~exist('LibraryFile','var'))LibraryFile=SpinCoreAPI.DefaultLibFile;end
+                if(~exist('LibraryHeader','var'))LibraryHeaders=SpinCoreAPI.DefaultHeaderFiles;end
+                if(~exist('LibraryName','var'))LibraryName=SpinCoreAPI.DeafultLibName;end
+
+                coreapi=SpinCoreAPI(LibraryFile,LibraryHeaders,LibraryName); % redo.
+            end
+            api=coreapi;
         end
     end
 end

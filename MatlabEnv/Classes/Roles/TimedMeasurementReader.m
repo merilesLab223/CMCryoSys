@@ -11,6 +11,7 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
         % true to ignore the errors.
         IgnoreErrors=false;
         AccumilatedOffsetWarningTime=1000;
+        UseAccumilatedTickCountForTime=true;
     end
     
     properties (SetAccess = protected)
@@ -67,8 +68,16 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
                 ev=DAQEventStruct();%obj.m_eventDataStruct;
                 ev.IsExecuting=1;
                 ev.deviceTimeStamps=e.TimeStamps;
-                ev.TimeStamps=ev.deviceTimeStamps./...
-                    (obj.ClockRatio*obj.timeUnitsToSecond);
+                
+                if(obj.UseAccumilatedTickCountForTime)
+                    tps=1/(obj.Rate*obj.timeUnitsToSecond);
+                    ev.TimeStamps=(obj.TickCount+([1:length(e.TimeStamps)]')-1)*tps;
+                else
+                    ev.TimeStamps=ev.deviceTimeStamps./...
+                        (obj.ClockRatio*obj.timeUnitsToSecond);                    
+                end
+
+                
                 ev.TotalTicksSinceStart=obj.TickCount;
                 ev.Elapsed=ev.TimeStamps(1);
                 ev.TicksElapsed=obj.TickCount/(obj.timeUnitsToSecond*obj.ClockRatio*obj.Rate);

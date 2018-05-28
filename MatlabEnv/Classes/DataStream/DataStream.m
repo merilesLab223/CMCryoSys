@@ -57,6 +57,12 @@ classdef DataStream < handle & TimeBasedObject
                 obj.DataReadyEventListner.Enabled=0;
             end
         end
+        
+        function reset(obj)
+        end
+        
+        function prepare(obj)
+        end
     end
 end
 

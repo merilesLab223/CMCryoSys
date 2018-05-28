@@ -1,5 +1,6 @@
 classdef ExpCore < handle
     methods (Static)
+        % returns the server for the device collection.
         function [srv]=GetServer()
             persistent server;
             if(isempty(server))
@@ -7,6 +8,7 @@ classdef ExpCore < handle
             end            
             srv=server;
         end
+        
         % validates the that the experiment server is running.
         function ValidateServer(traceLogs)
             if(~exist('traceLogs','var'))
@@ -36,6 +38,18 @@ classdef ExpCore < handle
             else
                 exp=ExpCore.GetExperiment(server.LastExperimentOpenedID);
             end
+        end
+    end
+    
+    % devices and device collections
+    methods (Static)
+        % returns the global device collection.
+        function [devs]=GetDevices()
+            persistent devcol;
+            if(isempty(devcol))
+                devcol=DeviceCollection();
+            end
+            devs=devcol;
         end
     end
 end

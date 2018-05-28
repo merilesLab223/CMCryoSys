@@ -30,8 +30,9 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
             % find the NI devie.
             obj.validateSession();
             s=obj.niSession;
-            s.addAnalogOutputChannel(obj.niDevID,obj.xchan,'Voltage');
-            s.addAnalogOutputChannel(obj.niDevID,obj.ychan,'Voltage');
+            [cx]=s.addAnalogOutputChannel(obj.niDevID,obj.xchan,'Voltage');
+            [cy]=s.addAnalogOutputChannel(obj.niDevID,obj.ychan,'Voltage');
+            
         end
     end
     
@@ -93,16 +94,6 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
            
             for i=1:length(timestamps)
                 idata=data{i};
-                
-%                 lastT=0;
-%                 lastXv=0;
-%                 lastYv=0;
-%                 
-%                 if(~isempty(t))
-%                     lastT=t(end);
-%                     lastV=v(end);
-%                 end
-                
                 tv=timestamps(i)+idata.t; % current time vector.
                 tspan=min(tv):obj.getTimebase():max(tv);
                 lt=length(tspan);
@@ -118,20 +109,27 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
                     xv=idata.x;
                     yv=idata.y;
                 end
-                
-                % nothting.
-                if(isempty(t) && tspan(1)>0)
-                    xv=[xv(1),xv];
-                    yv=[yv(1),yv];
-                    tspan=[0,tspan];
-                    lt=lt+1;
+                % starting points (duplicate the first point if needed).
+                xv=[xv(1),xv];
+                yv=[yv(1),yv];
+                tspan=[timestamps(i),tspan];
+                if(isempty(t)&&tspan(1)>0)
+                    tspan(1)=0;
                 end
+                lt=lt+1;
+                
+%                 % nothting.
+%                 if(isempty(t) && tspan(1)>0)
+%                     xv=[xv(1),xv];
+%                     yv=[yv(1),yv];
+%                     tspan=[timestamps(i),tspan];
+%                     lt=lt+1;
+%                 end
                 
                 % appending
                 t(end+1:end+lt)=tspan;
                 x(end+1:end+lt)=xv;
                 y(end+1:end+lt)=yv;
-                
             end
             
             % appeding current time if needed.

@@ -44,6 +44,13 @@ classdef StreamCollector< handle & DataStream
             obj.StreamData=[];
         end
         
+        function reset(obj)
+            obj.clear();
+        end
+        
+        function prepare(obj)
+        end
+        
         function [data,dt]=getData(obj)
             data=obj.StreamData;
             ts=obj.StreamT;
@@ -63,6 +70,12 @@ classdef StreamCollector< handle & DataStream
                     ts=[ones(missing,1)*ts(1);ts];
                 end
             end
+        end
+        
+        function [rslt]=getResultsMatrix(obj)
+            rslt=[];
+            rslt(:,1)=obj.StreamT;
+            rslt(:,2)=obj.StreamData;
         end
     end
     

@@ -1,4 +1,4 @@
-function [img,uidxs] = DisplayScanAsImage(rslt,coln,rown,dwellTime,lastImg,multidir,ranges,useLogScale)
+function [img,uidxs] = DisplayScanAsImage(rslt,coln,rown,dwellTime,multidir,toff,lastImg,ranges,useLogScale)
     % splicing according to dwell time.
     if(~exist('lastImg','var'))lastImg=[];end
     if(~exist('multidir','var'))multidir=0;end
@@ -6,7 +6,7 @@ function [img,uidxs] = DisplayScanAsImage(rslt,coln,rown,dwellTime,lastImg,multi
     if(~exist('useLogScale','var'))useLogScale=0;end
     tic;
     img=[];
-    [img,uidxs]=StreamToImageData(rslt,coln,rown,dwellTime,multidir);
+    [img,uidxs]=StreamToImageData(rslt,coln,rown,dwellTime,multidir,toff);
     if(isempty(img))
         disp('Empty image at update round');
         img=lastImg;

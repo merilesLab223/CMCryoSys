@@ -8,8 +8,10 @@ function [x,y,t] = WriteImageScan(pos,x,y,width,height,nX,nY,dwellTime,varargin)
     prs.parse(varargin{:});
 
     % generating the image scan vepsctor matrix.
-    xv=x:width/(nX-1):x+width; % -1 spaces inside diffrence.
-    yv=y:height/(nY-1):y+height;
+    dx=width/nX;
+    dy=height/nY;
+    xv=(x:dx:(x+width-dx))+dx/2; % -1 spaces inside diffrence.
+    yv=(y:dy:(y+height-dy))+dy/2;
 
     % generating the y vector locations.
     y=repmat(yv,length(yv),1); % as matrix.
@@ -26,7 +28,10 @@ function [x,y,t] = WriteImageScan(pos,x,y,width,height,nX,nY,dwellTime,varargin)
 
     % creating the time dwell.
     t=prs.Results.timeOffset+(0:length(y)-1).*prs.Results.weights.*dwellTime;
-    pos.GoTo(x(1),y(1),prs.Results.timeOffset);
+    if(prs.Results.timeOffset>0)
+        pos.GoTo(x(1),y(1),prs.Results.timeOffset);
+    end
     [x,y,t]=pos.GoTo(x,y,t',prs.Results.interpMethod);
+    pos.wait(dwellTime);
 end
 
