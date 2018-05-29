@@ -10,7 +10,7 @@ classdef Device < handle
     end
     
     properties
-        name='unknown';
+        name='';
         isConfigured=false;
     end
 
@@ -32,14 +32,16 @@ classdef Device < handle
             e.Data=obj;
             obj.notify('DeviceConfigured',e);
         end   
-  
     end
     
     % general execution functions.
     methods
         % called to configure the device.
         function []=configure(obj)
-            if(obj.isConfigured)return;end
+            if(obj.isConfigured)
+                return;
+            end
+            disp(['Configuring device ',obj.name,' of type ',class(obj)]);
             configureDevice(obj);            
             obj.isConfigured=true;
             obj.onDeviceConfigured();

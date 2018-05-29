@@ -29,6 +29,10 @@ classdef NI6321AnalogReader < NI6321Core & TimedMeasurementReader
             obj.DataAvailableEventListener=...
                 s.addlistener('DataAvailable',@obj.dataBatchAvailableFromDevice);
         end
+        
+        function [ts,data]=processDataBatch(obj,ts,data,e)
+            data=data*1000; % in mV.
+        end
     end
     
     methods

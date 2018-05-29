@@ -40,7 +40,7 @@ classdef TimedDataCollector < handle & DataStream
         LastResultsMeasured=0;
         MeasurementCompletedTimePrecentage=0;
     end
-    
+
     % timebinned measurement definitions.
     properties (Access = protected)
         rawData=[]; % bins to measure.

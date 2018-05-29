@@ -30,10 +30,12 @@ function [t,strm] = StreamToTimedData(rslts,tbin,dt)
     end
     
     %number of ticks
-    ticn=ceil(lt/binn);
-    missing=ticn*binn-lt;
-    t(end+1:end+missing)=0;
-    strm(end+1:end+missing,:)=0;
+    ticn=floor(lt/binn);
+    overmax=lt-ticn*binn-1;
+    if(overmax>-1)
+        t(end-overmax:end)=[];
+        strm(end-overmax:end)=[];
+    end
     
     % reshape and sum.
     t=reshape(t,binn,ticn);

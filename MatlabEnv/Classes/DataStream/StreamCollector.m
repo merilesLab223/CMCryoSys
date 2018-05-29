@@ -21,7 +21,6 @@ classdef StreamCollector< handle & DataStream
     properties (SetAccess = protected)
         Data=[0;0];
         MeanV=0; % in timebase units.
-        CountsPerTimebase=0;
         Timestamps=[0;0];
         LastReadTimestamp=-1;
         LastUpdateTimestamp=-1;
@@ -82,17 +81,7 @@ classdef StreamCollector< handle & DataStream
     methods (Access = protected)
         function dataBatchAvailableFromDevice(obj,s,e)
             if(isempty(e.TimeStamps))
-                obj.MeanV=0;
                 return;
-            end
-            %return;
-            %obj.MeanV=mean(e.Data);
-            
-            if(length(e.TimeStamps)>1)
-                deltaT=e.TimeStamps(end)-e.TimeStamps(1);
-                %obj.CountsPerTimebase=sum(e.Data)*obj.getTimebase()/deltaT;
-            else
-                obj.CountsPerTimebase=1;
             end
             
             ts=obj.StreamT;
@@ -102,9 +91,10 @@ classdef StreamCollector< handle & DataStream
                 ts=[];
                 data=[];
             end
-            
+            obj.MeanV=mean(e.Data,1);
             dlen=length(e.TimeStamps);
             data(end+1:end+dlen,:)=e.Data;
+            
             if(isempty(ts))
                 ts=e.TimeStamps;
             else

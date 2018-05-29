@@ -8,7 +8,7 @@ function InitEnv(configpath)
     IncludeLib;
     IncludeLib(curdir);
     if(~exist('configpath','var'))
-        configpath=[curdir,'/Config/systemconfigure.m'];
+        configpath=[curdir,'/Config/configure_system.m'];
     end
     
     addpath(fileparts(configpath));

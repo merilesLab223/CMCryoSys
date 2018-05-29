@@ -10,6 +10,9 @@ classdef NI6321Counter < NI6321Core & TimedMeasurementReader
         
     properties
         UseTimedDataUnits=true;
+        % if true, first data value is ignored and is considered a 
+        % startup value.
+        FirstValueClearBuffer=true;
     end
     
     properties (Access = private)
@@ -21,13 +24,24 @@ classdef NI6321Counter < NI6321Core & TimedMeasurementReader
         function obj = NI6321Counter(varargin)
             obj=obj@NI6321Core(varargin);
         end
+        
+        function ResetCounter(obj)
+            if(~isempty(obj.niSession))
+                obj.niSession.resetCounters();
+            end
+        end
     end
     
     methods(Access =protected)
         function [ts,data]=processDataBatch(obj,ts,data,e)
             loval=data(end);
             if(isempty(obj.lastDataValue))
-                data=diff([data(1);data]);
+                if(obj.FirstValueClearBuffer)
+                    data=diff(data);
+                    ts=ts(2:end);
+                else
+                    data=[data(1);diff(data)];
+                end
             else
                 data=diff([obj.lastDataValue;data]);
             end
@@ -53,8 +67,7 @@ classdef NI6321Counter < NI6321Core & TimedMeasurementReader
             s.IsContinuous=true;
             
             % adding counter.
-            %[obj.niCounterChannel,idx]=...
-                s.addCounterInputChannel(obj.niDevID,obj.ctrName,'EdgeCount');
+            s.addCounterInputChannel(obj.niDevID,obj.ctrName,'EdgeCount');
             s.Channels(1).ActiveEdge='Rising';
             obj.DataAvailableEventListener=...
                 s.addlistener('DataAvailable',@obj.dataBatchAvailableFromDevice);
@@ -67,6 +80,7 @@ classdef NI6321Counter < NI6321Core & TimedMeasurementReader
             obj.lastDataValue=[];
             obj.initInternalTime();
             prepare@NI6321Core(obj);
+            obj.ResetCounter();
         end
     end
 end

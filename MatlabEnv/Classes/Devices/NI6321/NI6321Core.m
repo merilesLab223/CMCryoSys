@@ -18,12 +18,8 @@ classdef NI6321Core < Device & TimeBasedObject
         RunTimeout=1000;
         NICardMatchPattern='6321';
         triggerTerm='';
-        
         niSession=[];
-        %niTrigger=[];
-        
         niDevID=[];
-        
         externalClockTerminal='';
         ThrowErrors=false;
     end
@@ -55,16 +51,17 @@ classdef NI6321Core < Device & TimeBasedObject
                 %disp('Called stop on a non running session.');
                 return;
             end
-            fprintf(['Stopping session of ',class(obj),'...']);
-            %if(s.Trig
+            fprintf(['Stopping ',obj.name,' (',class(obj),')...']);
             try
-            s.stop();
+                s.stop();
             catch
             end
+            fprintf('stopped, releasing resources...');
             try
-            s.release();
+                s.release();
             catch
             end
+            
             %wait(s);
             obj.LastStopTime=now;
             fprintf(['Done.',newline]);

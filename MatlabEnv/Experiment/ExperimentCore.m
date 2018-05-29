@@ -29,8 +29,9 @@ classdef ExperimentCore < Expose.Expose
             if(getExperimentHandler)
                 % getting the experiment handler, associated with id.
                 if(~obj.WebsocketBindings.contains(id))
-                    warning(['No current active experiments are associated with caller id: ',...
-                        id,'. Message ignored.']);
+                    disp(['No current active experiments are associated with caller id: ',...
+                        id,'. Assumed destroyed.']);
+                    o=[];
                     return;
                 end
                 o=obj.WebsocketBindings(id);

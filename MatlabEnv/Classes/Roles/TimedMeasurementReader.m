@@ -39,57 +39,17 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
     
     % called when data is ready.
     methods (Access = protected)
-        
         function dataBatchAvailableFromDevice(obj,s,e)
             try
                 if(obj.IsTMReaderDeleted) % check for clear all deleted.
                     return;
                 end
-
-                if(obj.FirstDataBatchTimestamp<0)
-                    obj.FirstDataBatchTimestamp=now;
-                end
-                computerElapsedTime=(now-obj.FirstDataBatchTimestamp)*86400/obj.timeUnitsToSecond;
-                firstTimestamp=e.TimeStamps(1)/obj.timeUnitsToSecond;
-                accumilatedClockOffset=computerElapsedTime-firstTimestamp;
-
-                if(accumilatedClockOffset-obj.m_LastAccumilatedOffset>=...
-                        obj.AccumilatedOffsetWarningTime)
-                    obj.m_LastAccumilatedOffset=accumilatedClockOffset;
-                    disp(['Accumilated datareader offset is large, [ms] ',...
-                        num2str(accumilatedClockOffset)]);
-                end
-                obj.ComputerToReaderTimeOffset=accumilatedClockOffset;
-
-                if(obj.m_eventDataStruct.IsExecuting)
-                    obj.m_eventDataStruct=DAQEventStruct;
-                end
                 
-                ev=DAQEventStruct();%obj.m_eventDataStruct;
-                ev.IsExecuting=1;
-                ev.deviceTimeStamps=e.TimeStamps;
+                dbatch=struct();
+                dbatch.data=e.Data;
+                dbatch.ts=e.TimeStamps;
+                obj.postNextDataBatch(dbatch);
                 
-                if(obj.UseAccumilatedTickCountForTime)
-                    tps=1/(obj.Rate*obj.timeUnitsToSecond);
-                    ev.TimeStamps=(obj.TickCount+([1:length(e.TimeStamps)]')-1)*tps;
-                else
-                    ev.TimeStamps=ev.deviceTimeStamps./...
-                        (obj.ClockRatio*obj.timeUnitsToSecond);                    
-                end
-
-                
-                ev.TotalTicksSinceStart=obj.TickCount;
-                ev.Elapsed=ev.TimeStamps(1);
-                ev.TicksElapsed=obj.TickCount/(obj.timeUnitsToSecond*obj.ClockRatio*obj.Rate);
-                ev.CompElapsed=computerElapsedTime;
-                ev.AccumilatedClockOffset=accumilatedClockOffset;
-
-                [ev.TimeStamps,ev.Data]=obj.processDataBatch(ev.TimeStamps,e.Data,e);
-                obj.TickCount=obj.TickCount+length(ev.TimeStamps);
-                obj.ProceesedCount=obj.ProceesedCount+length(ev.TimeStamps);
-
-                obj.notify("DataReady",ev);
-                ev.IsExecuting=0;
             catch err
                 obj.LastError=err;
                 obj.LastErrorTimestamp=now;
@@ -99,8 +59,114 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
                 error(err);
             end
         end
+    end
+    
+    methods (Access = protected)
+        function [ts,data]=processDataBatch(obj,ts,data)
+        end
+    end
+    
+    properties(Access = private)
+        m_processDataEventDispatch=[];
+        m_processDataEventDispatchWaiting={};
+    end
+    
+    % async data processing.
+    methods(Access = private)
+        function postNextDataBatch(obj,dbatch)
+            if(isempty(obj.m_processDataEventDispatch))
+                obj.m_processDataEventDispatch=events.CSDelayedEventDispatch();
+                
+                obj.m_processDataEventDispatch.addlistener('Ready',...
+                    @obj.processWaitingDataBatches);
+            end
+            obj.m_processDataEventDispatchWaiting{end+1}=dbatch;
+            obj.m_processDataEventDispatch.trigger(1);
+        end
         
-        function [ts,data]=processDataBatch(obj,ts,data,e)
+        function processWaitingDataBatches(obj,s,e)
+            if(obj.FirstDataBatchTimestamp<0)
+                obj.FirstDataBatchTimestamp=now;
+                obj.m_LastAccumilatedOffset=0;
+            end
+            
+            if(isempty(obj.m_processDataEventDispatchWaiting))
+                return;
+            end
+            
+            accumTimeOffset=int32(obj.secondsToTimebase(...
+                (now-obj.FirstDataBatchTimestamp)*24*60*60));
+            
+            dbatches=obj.m_processDataEventDispatchWaiting;
+            obj.m_processDataEventDispatchWaiting={};
+            % collecitng the data.
+            dlen=0;
+            columns=1;
+            for i=1:length(dbatches)
+                dlen=dlen+length(dbatches{i}.ts);
+                sdata=size(dbatches{i}.data);
+                if(columns<sdata(2))
+                    columns=sdata(2);
+                end
+            end
+            
+            data=zeros(dlen,columns);
+            ts=zeros(dlen,1);
+            lastPos=1;
+            for i=1:length(dbatches)
+                dsize=size(dbatches{i}.data);
+                idxs=lastPos:lastPos+dsize(1)-1;
+                ts(idxs)=dbatches{i}.ts;
+                data(idxs,1:dsize(2))=dbatches{i}.data;
+                lastPos=idxs(end)+1;
+            end
+            
+            % salve old device timestamps;
+            devts=ts;
+
+            if(obj.UseAccumilatedTickCountForTime)
+                tps=1/(obj.Rate*obj.timeUnitsToSecond);
+                ts=(obj.TickCount+([1:dlen]')-1)*tps;
+            else
+                ts=ts./(obj.ClockRatio*obj.timeUnitsToSecond);                    
+            end
+            
+            % processing the current.
+            [ts,data]=obj.processDataBatch(ts,data);
+            obj.TickCount=obj.TickCount+dlen;
+            
+            ev=DAQEventStruct();
+            ev.Data=data;
+            ev.TimeStamps=ts;
+            ev.TotalTicksSinceStart=obj.TickCount;
+            ev.deviceTimeStamps=devts;
+            
+            ev.Elapsed=obj.secondsToTimebase(obj.TickCount/obj.Rate);
+            ev.CompElapsed=obj.secondsToTimebase(...
+                (now-obj.FirstDataBatchTimestamp)*24*60*60);
+%             ev.AccumilatedClockOffset=accumTimeOffset-ev.Elapsed;
+%             
+%             if(ev.AccumilatedClockOffset>obj.AccumilatedOffsetWarningTime)
+%                 warning(['Accumilated datareader offset is large, [ms] ',...
+%                         num2str(ev.AccumilatedClockOffset)]);
+%                 obj.FirstDataBatchTimestamp=-1;
+%             end
+%             
+            try
+                obj.notify("DataReady",ev);
+            catch err
+                obj.LastError=err;
+                obj.LastErrorTimestamp=now;
+                if(obj.IgnoreErrors)
+                    warning(err);
+                else
+                    error(err);
+                end
+            end
+            
+            if(~isempty(obj.m_processDataEventDispatchWaiting))
+                obj.m_processDataEventDispatch.trigger(1);
+            end
         end
     end
     

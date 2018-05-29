@@ -56,7 +56,9 @@ function [img,updatedIdxs] = StreamToImageData(rslt,coln,rown,dwellTime,multidir
     dnorm=accumarray(atImgIdxs,ones(size(atImgIdxs)));
     dsum=accumarray(atImgIdxs,imgvector);
     updatedIdxs=min(atImgIdxs)+(1:length(dnorm))-1;
-    img(updatedIdxs)=dsum./dnorm;
+    img(updatedIdxs)=dsum;
+    dnormidxs=find(dnorm>0);
+    img(dnormidxs)=img(dnormidxs)./dnorm(dnormidxs);
     
     % filling the toffset;
     offsetidxs=1:ceil(toff/dwellTime);

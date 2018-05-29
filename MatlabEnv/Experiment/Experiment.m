@@ -2,6 +2,7 @@ classdef Experiment < handle
     properties(SetAccess = private)
         CallerID=[];
         ExpCore=[];
+        Devices=[];
     end
 
     methods
@@ -15,6 +16,12 @@ classdef Experiment < handle
                 prs=fieldnames(exp);
             end
             exp.ExpCore.Update(exp.CallerID,prs);
+        end
+        
+        % the device collection
+        function [devs]=get.Devices(exp)
+            % the static method in exp core.
+            devs=ExpCore.GetDevices();
         end
     end
 end
