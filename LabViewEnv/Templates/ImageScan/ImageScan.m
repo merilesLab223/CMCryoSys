@@ -23,6 +23,8 @@ classdef ImageScan < Experiment
         PositionTracking=false;
         ScanProgress=0;
         ImageProperties=struct();
+        StreamStorageFile='';
+        IsSavingStreamToFile=false;
     end
     
     % privately set properties.
@@ -33,6 +35,7 @@ classdef ImageScan < Experiment
         HasBeenInitialized=false;
         IsWorking=false;
         StatusFlags=struct();
+        
     end
     
     % internal properties, to be used with other parameters.
@@ -126,8 +129,14 @@ classdef ImageScan < Experiment
             end
             exp.m_is_working=v; % to allow auto update.
             exp.update('IsWorking');
-        end      
+        end    
 
+        function set.IsSavingStreamToFile(exp,v)
+            exp.IsSavingStreamToFile=v;
+            if(v~=true)
+                exp.StreamStorageFile='';
+            end
+        end
     end
     
     % positioning private properties
@@ -181,8 +190,6 @@ classdef ImageScan < Experiment
             exp.Pos.GoTo(exp.Position.X,exp.Position.Y);
             exp.Pos.prepare();
             exp.Pos.run();
-            
-            pause(0.001);
             exp.Pos.stop();
             
             exp.StatusFlags.IsSettingPosition=false;
@@ -252,22 +259,98 @@ classdef ImageScan < Experiment
         % call to load an image as the graph data.
         % any image format that is allowed by matlab imread.
         function LoadImage(exp,fpath)
-            exp.ScanImage=rgb2gray(imread(fpath))';
-            simg=size(exp.ScanImage);
-            exp.ImageProperties.Xn=simg(1);
-            exp.ImageProperties.Yn=simg(2);
-            exp.ImageProperties.X=0;
-            exp.ImageProperties.Y=0;
-            exp.ImageProperties.Width=simg(1);
-            exp.ImageProperties.Height=simg(2);
-            exp.ImageProperties.FromCenter=true;            
-            exp.update('ImageProperties');
-            exp.update('ScanImage');
+            img=imread(fpath);
+            if(length(size(img))==3)
+                img=rgb2gray(img)';
+            else
+                img=img';
+            end
+            
+            simg=size(img);
+            exp.setScanImage(img,[0,0,simg(1),simg(2)],true);         
+            
+        end
+        
+        function SaveScanToImage(exp,fpath,saveMatFile)
+            if(~exist('saveMatFile','var'))
+                saveMatFile=true;
+            end
+            img=double(exp.ScanImage);
+            imgmed=median(img(:));
+            mednorm=50;
+            img(img>imgmed*mednorm)=imgmed*mednorm;
+            img(img<imgmed/mednorm)=imgmed/mednorm;
+            img=(img-min(img(:)))./(max(img(:))-min(img(:)));
+
+            imwrite(img,fpath);
+            if(saveMatFile)
+                img=exp.ScanImage;
+                save([fpath,'.mdata.mat'],'img');
+            end
+        end
+        
+        function SetStreamSaveFile(exp,fpath)
+            [~,~,ext]=fileparts(fpath);
+            if(~strcmp(ext,'.mat'))
+                fpath=[fpath,'.mat'];
+            end
+            strm=[];
+            try
+                if(exist(fpath,'file'))
+                    delete(fpath);
+                end
+                save(fpath,'strm','-v7.3');
+                exp.StreamStorageFile=fpath;
+                exp.IsSavingStreamToFile=true;
+            catch err
+                exp.StreamStorageFile='';
+                exp.IsSavingStreamToFile=false;
+                warning(err.message);
+            end
+            exp.update('IsSavingStreamToFile');
         end
     end
     
     % protected general methods
     methods(Access = protected)
+        function setScanImage(exp,img,reg,fromCenter, doUpdate)
+            if(~exist('fromCenter','var'))
+                fromCenter=exp.ScanParameters.FromCenter;
+            end
+            if(~exist('reg','var'))
+                reg=[exp.ScanParameters.X,exp.ScanParameters.Y,...
+                    exp.ScanParameters.Width,exp.ScanParameters.Height];
+            end
+            if(~exist('doUpdate','var'))
+                doUpdate=true;
+            end
+            tic;
+            exp.ScanImage=img;
+            simg=size(exp.ScanImage);
+            exp.ImageProperties.Xn=simg(1);
+            exp.ImageProperties.Yn=simg(2);
+            exp.ImageProperties.X=reg(1);
+            exp.ImageProperties.Y=reg(2);
+            exp.ImageProperties.Width=reg(3);
+            exp.ImageProperties.Height=reg(4);
+            exp.ImageProperties.FromCenter=fromCenter;
+            cidxs=find(img(:)>0);
+            if(~isempty(cidxs))
+                exp.ImageProperties.min=min(img(cidxs));
+                exp.ImageProperties.max=max(img(cidxs));
+                exp.ImageProperties.med=median(img(cidxs));
+            else
+                exp.ImageProperties.min=0;
+                exp.ImageProperties.max=0;
+                exp.ImageProperties.med=0;
+            end
+            %disp(['Update image dt: ',num2str(toc)]);
+            if(doUpdate)   
+                exp.update('ImageProperties',false);
+                exp.update('ScanImage');
+            end
+        end
+        
         function resetStatusFlags(exp)
             exp.StatusFlags=struct(...
                 'IsStreaming',exp.IsStreamingReader,...
@@ -409,23 +492,24 @@ classdef ImageScan < Experiment
                 return;
             end
             
-            devlist=exp.ScanDevices;
-            for i=1:length(devlist)
-                dev=devlist{i};
-                if(~dev.isConfigured)
-                    continue;
-                end
-                try
-                    dev.stop();
-                catch err
-                    warning('Could not stop device, or device stop error.');
-                    warning(err);
-                end
-            end
+            exp.Clock.stop();
+            exp.Pos.stop();
+            exp.Reader.stop();
             
-            disp('Stopped devices.');
+            %disp('Stopped devices.');
             exp.resetStatusFlags();
 
+            if(isa(exp.StreamDataCollector,'StreamCollector'))
+                exp.StreamDataCollector.stop();
+            end
+            
+            exp.deleteCollectors();
+            
+            exp.IsWorking=false;
+            exp.update('StatusFlags');
+        end 
+        
+        function deleteCollectors(exp)
             if(isa(exp.StreamDataCollector,'StreamCollector'))
                 exp.StreamDataCollector.stop();
             end
@@ -435,12 +519,8 @@ classdef ImageScan < Experiment
             end
             
             exp.StreamDataCollector=[];
-            exp.ScanDataCollector=[];
-            
-            exp.IsWorking=false;
-            exp.update('StatusFlags');
-            disp('Cleared collectors.');
-        end     
+            exp.ScanDataCollector=[];            
+        end
     end
     
     % Streaming.
@@ -495,6 +575,8 @@ classdef ImageScan < Experiment
             % setting the device parameters.
             if(readChunkSize<100)
                 readChunkSize=100;
+            elseif(readChunkSize>5000)
+                readChunkSize=5000;
             end
             
             % set device operation rate.
@@ -563,6 +645,22 @@ classdef ImageScan < Experiment
                 StreamToTimedData(data,exp.StreamConfig.IntegrationTime,dt);
             exp.StreamTrace=uint16(strm);
             exp.update({'StreamTrace','ReaderAmplitude'});
+    
+            if(exp.IsSavingStreamToFile && ~isempty(exp.StreamStorageFile))
+                strm=[e.TimeStamps,e.Data];
+                lt=length(e.TimeStamps);
+                mf=matfile(exp.StreamStorageFile,'Writable',true);
+                smsize=size(mf,'strm');
+                if(sum(smsize)==0)
+                    mf.strm=strm;
+                else
+                    erow=smsize(1);
+                    mf.strm(erow+1:erow+lt,:)=strm;                    
+                end
+
+                delete(mf);
+                %save(exp.StreamStorageFile,'strm','-append');
+            end
         end
     end
     
@@ -645,11 +743,22 @@ classdef ImageScan < Experiment
             else
                 clockTerm='pfi0';
             end
+            
             triggerTerm=clockTerm;
+                                    
+%             readChunkSize=exp.StreamConfig.UpdateTime/...
+%                 exp.Reader.secondsToTimebase(1/measureClockRate);
+%                         
+%             % setting the device parameters.
+%             if(readChunkSize<100)
+%                 readChunkSize=100;
+%             elseif(readChunkSize>5000)
+%                 readChunkSize=5000;
+%             end
             
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % Set info to devices.
-            
+
             % setting triggers and clock terminals.
             exp.Reader.externalClockTerminal=clockTerm;
             exp.Pos.externalClockTerminal=clockTerm;
@@ -685,7 +794,8 @@ classdef ImageScan < Experiment
             WriteImageScan(exp.Pos,x0,y0,w,h,n,n,dwell,...
                 'multidirectional',exp.ScanParameters.MultiDir,...
                 'interpMethod','linear');
-            exp.Pos.GoTo(exp.Position.X,exp.Position.Y); % goto X,Y after.
+            
+            exp.Pos.GoTo(exp.Position.X,exp.Position.Y,10); % goto X,Y after.
             
             % configuring readers.
             if(exp.ScanConfig.ShowStream)
@@ -709,7 +819,7 @@ classdef ImageScan < Experiment
             chnkdv=4;
             maxchunk=bint/(chnkdv*tickTime);
             
-            while(maxchunk>10000)
+            while(maxchunk>4000)
                 chnkdv=chnkdv+1;
                 maxchunk=bint/(chnkdv*tickTime);
             end
@@ -718,7 +828,7 @@ classdef ImageScan < Experiment
                 maxchunk=1;
             end
             maxchunk=round(maxchunk);
-            exp.Reader.SetMaxReadChunkSize(maxchunk);
+
             exp.ScanDataCollector=TimeBinCollector(exp.Reader);
             exp.ScanDataCollector.setClockRate(measureClockRate);
             exp.ScanDataCollector.addlistener('Complete',...
@@ -734,6 +844,9 @@ classdef ImageScan < Experiment
             %%%%%%%%%%%%%%%%%%%%%%%%%
             % prepare and run.
             
+            % preparing the streaming reader chunk size.
+            exp.Reader.SetMaxReadChunkSize(maxchunk);
+            
             % updating flags.
             exp.StatusFlags.IsScanning=true;
             exp.update('StatusFlags');            
@@ -743,6 +856,7 @@ classdef ImageScan < Experiment
             exp.Clock.prepare();
             exp.ScanDataCollector.prepare();
             exp.StreamDataCollector.prepare();            
+            %exp.Pos.SetMaxReadChunkSize(-1);
             
             exp.Pos.run();
             exp.Reader.run();
@@ -757,7 +871,7 @@ classdef ImageScan < Experiment
             % finalizing.
             if(~isa(exp.ScanDataCollector,'TimeBinCollector'))
                 return;
-            end            
+            end   
             wasStreaming=exp.IsStreamingReader;
             rslts=exp.ScanDataCollector.Results;
             comp=exp.ScanDataCollector.CompleatedPercent;
@@ -769,11 +883,13 @@ classdef ImageScan < Experiment
             exp.ProcessScanResults(rslts,comp);
             exp.IsWorking=false;
             exp.update('IsWorking');
+            
             if(wasStreaming)
                 exp.doStream(true);
             else
-                exp.stopAllDevices(true);
+                exp.stopAllDevices(false);
             end
+            exp.sendPositionToDevice(true);
         end
         
         function OnScanDataBinComplete(exp,s,e)
@@ -787,21 +903,19 @@ classdef ImageScan < Experiment
         function ProcessScanResults(exp,rslts,comp)
             n=exp.ScanParameters.N;
             toff=0.19+exp.Pos.secondsToTimebase(1/exp.Pos.Rate);
-            exp.ScanImage=uint16(StreamToImageData(rslts,n,n,...
+            img=uint16(StreamToImageData(rslts,n,n,...
                 exp.m_curScanDwellTime,exp.ScanParameters.MultiDir,toff));
+            exp.setScanImage(img);
 %            exp.ScanImage=exp.ScanImage;
             exp.ScanProgress=comp;
-            exp.update({'ScanImage','ScanProgress'});
+            exp.update({'ScanProgress'});
         end
     end
 
     % cleanup and debug
     methods
         function delete(exp)
-            try
-                exp.stopAllDevices();
-            catch err
-            end
+            exp.deleteCollectors();
         end
         
         function debugStoreCurrentStateToDisk(exp,ignoreList)
@@ -822,7 +936,30 @@ classdef ImageScan < Experiment
         function testLoop(exp)
             exp.OnUpdateLoop();
         end
-
+        
+        function testLoadRandomEye(exp,n,dt)
+            if(~exist('n','var'))
+                n=250;
+            end
+            if(~exist('dt','var'))
+                dt=0.1;
+            end
+            
+            exp.ImageProperties.Xn=n;
+            exp.ImageProperties.Yn=n;
+            exp.ImageProperties.X=0;
+            exp.ImageProperties.Y=0;
+            exp.ImageProperties.Width=n;
+            exp.ImageProperties.Height=n;
+            exp.ImageProperties.FromCenter=true;  
+            exp.update('ImageProperties');
+            while(true)
+                img=eye(n)+rand(n);
+                exp.setScanImage(uint16(img));
+                %exp.ScanImage=uint16(img);
+                pause(dt);
+            end
+        end
     end
 end
 

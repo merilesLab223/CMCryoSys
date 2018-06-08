@@ -56,7 +56,7 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
                 if(obj.IgnoreErrors)
                     return;
                 end
-                error(err);
+                error(err.message);
             end
         end
     end

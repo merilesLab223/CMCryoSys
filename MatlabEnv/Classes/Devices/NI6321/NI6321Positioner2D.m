@@ -32,7 +32,18 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
             s=obj.niSession;
             [cx]=s.addAnalogOutputChannel(obj.niDevID,obj.xchan,'Voltage');
             [cy]=s.addAnalogOutputChannel(obj.niDevID,obj.ychan,'Voltage');
-            
+        end
+        
+        function doResetSingleScan(obj)
+            s=obj.niSession;
+            obj.clearTirggerTerms();
+            obj.clearClockTerms();
+            oldRate=obj.Rate;
+            s.Rate=1000;
+            s.queueOutputData(zeros(100,2));
+            s.prepare();
+            obj.single();
+            s.Rate=oldRate;
         end
     end
     
@@ -41,6 +52,9 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
         % the position event will be called to execute data.
         function prepare(obj)
             % call base class.
+            if(obj.isConfigured)
+                obj.doResetSingleScan();
+            end
             prepare@NI6321Core(obj,true);
             s=obj.niSession;
             data=obj.compile();
@@ -52,11 +66,20 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
                 return;
             end
             
+            %totalSec=obj.timebaseToSeconds(obj.totalExecutionTime);
+            missing=2;
+            missing=missing*obj.Rate;
+            if(missing>0)
+                data=[data;data];
+                %s.queueOutputData(repmat(data(end,:),missing,1));
+            end
             s.queueOutputData(data);
-
+            % will be stuck unless properly set.
+            % WHY THE HELL THIS IS HAPPENING???
+            obj.SetMaxReadChunkSize(-1);
+            
             % prepare the session.
             s.prepare();
-            disp('pos prepared');
         end
         
         function run(obj)
@@ -70,7 +93,10 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
             end
             
             s.startBackground();
-            disp('pos running');
+        end
+        
+        function stop(obj)
+            stop@NI6321Core(obj);
         end
     end
     
@@ -88,10 +114,10 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
     methods
         % dose the sequence compilation.
         function [rslt]=compileSequence(obj,timestamps,data)
-            % creating the data vectors according to 
+            % creating the data vectors according to          
+            obj.toRounded();
             t=[];x=[];y=[]; % time vector is to identify duplicates.
             comp=[];
-           
             for i=1:length(timestamps)
                 idata=data{i};
                 tv=timestamps(i)+idata.t; % current time vector.
@@ -117,14 +143,6 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
                     tspan(1)=0;
                 end
                 lt=lt+1;
-                
-%                 % nothting.
-%                 if(isempty(t) && tspan(1)>0)
-%                     xv=[xv(1),xv];
-%                     yv=[yv(1),yv];
-%                     tspan=[timestamps(i),tspan];
-%                     lt=lt+1;
-%                 end
                 
                 % appending
                 t(end+1:end+lt)=tspan;

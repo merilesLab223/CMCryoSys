@@ -9,6 +9,10 @@ classdef ExperimentCore < Expose.Expose
         end
     end
     
+    properties (SetAccess = private)
+        AllExperimentHandlerIDS={};
+    end
+    
     % handler methods
     % overrding these handlers to return the appropriate 
     % message handlers for the specific command.
@@ -68,6 +72,10 @@ classdef ExperimentCore < Expose.Expose
             % call to get the handler since we are logging.
             onLog@Expose.Expose(obj,s,e);
             
+            if(~isvalid(obj))
+                return;
+            end
+            
             % keep this object alive since it is still connected.
             if(~isempty(e.CallerID))
                 obj.WebsocketBindings.contains(e.CallerID);
@@ -96,26 +104,28 @@ classdef ExperimentCore < Expose.Expose
             if(~obj.WebsocketBindings.contains(sid))
                 return;
             end
-            fprintf(['Destroying experiment for websocket ',sid,' ... ']);
-            exp=obj.WebsocketBindings(sid);
-            delete(exp);
+            disp(['Destroying experiment for websocket ',sid,' ... ']);
             obj.WebsocketBindings.remove(sid);
-            disp('OK');
+            disp(['Destruction complete, ',sid]);
         end
     end
     
     % experiment static methods
     methods
-        function [id]=OpenExperiment(obj,fpath,e)
+        function [expid]=OpenExperiment(obj,fpath,e)
+            obj.AllExperimentHandlerIDS{end+1}=e.CallerID;
             expClassInfo=obj.ValidateExperimentClassName(fpath);
-            id=e.CallerID;
+            [~,expname,~]=fileparts(fpath);
+            expid=expClassInfo.id;
+            disp(['Creating experiment "',expname,'" for websocket ',e.CallerID]);
             exp=expClassInfo.make();
             if(~isa(exp,'Experiment'))
                 error('Cannot create an experiment unless class is derived from Experiment class');
             end
-            obj.bindWebsocket(e.CallerID,exp);
-            exp.Init(obj,id);
+            
             obj.LastExperimentOpenedID=e.CallerID;
+            exp.BindExperimentCore(obj,e.CallerID);
+            obj.bindWebsocket(e.CallerID,exp);
         end
     end
     
@@ -156,7 +166,6 @@ classdef ExperimentCore < Expose.Expose
                 % temp and path
                 expClassInfo.RequiresTemp=false;
                 expClassInfo.code='';
-                
             end
             
             % check the class name and validate class is executable.

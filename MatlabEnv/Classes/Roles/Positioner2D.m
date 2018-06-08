@@ -6,7 +6,7 @@ classdef Positioner2D < TimeBasedSignalGenerator
         % A number or a function that describes the position
         % values to scaling values. 
         % Example: 
-        PositionTOVoltageUnits=[1,1];
+        PositionTOVoltageUnits=1;
         
         % if true invers the x and y positions.
         InvertXY=false;
@@ -43,8 +43,15 @@ classdef Positioner2D < TimeBasedSignalGenerator
             end
             obj.toRounded();
             
-            x=x.*obj.PositionTOVoltageUnits(1);
-            y=y.*obj.PositionTOVoltageUnits(2);
+            ptvx=obj.PositionTOVoltageUnits(1);
+            
+            if(length(obj.PositionTOVoltageUnits)>1)
+                ptvy=obj.PositionTOVoltageUnits(2);
+            else
+                ptvy=ptvx;
+            end
+            x=x.*ptvx;
+            y=y.*ptvy;
             
             if(obj.InvertXY)
                 dump=x;

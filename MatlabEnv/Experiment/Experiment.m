@@ -6,16 +6,19 @@ classdef Experiment < handle
     end
 
     methods
-        function Init(exp,expCore,callerID)
+        function BindExperimentCore(exp,expCore,callerID)
             exp.CallerID=callerID;
             exp.ExpCore=expCore;
         end
         
-        function update(exp,prs)
+        function update(exp,prs,async)
             if(~exist('prs','var'))
                 prs=fieldnames(exp);
             end
-            exp.ExpCore.Update(exp.CallerID,prs);
+            if(~exist('async','var'))
+                async=true;
+            end            
+            exp.ExpCore.Update(exp.CallerID,prs,~async);
         end
         
         % the device collection

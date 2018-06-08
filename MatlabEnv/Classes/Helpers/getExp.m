@@ -1,4 +1,8 @@
 function exp = getExp(expID)
-    exp=ExperimentCore.GetExperimentByID(expID);
+    if(exist('exp','var'))
+        exp=ExpCore.GetExperimentByID(expID);
+    else
+        exp=ExpCore.GetLastExperiment();
+    end
 end
 

@@ -51,6 +51,15 @@ classdef ExpCore < handle
             end
             devs=devcol;
         end
+        
+        function [dev]=GetDevice(name)
+            devs=ExpCore.GetDevices();
+            if(~devs.contains(name))
+                dev=[];
+                return;
+            end
+            dev=devs(name);
+        end
     end
 end
 

@@ -30,6 +30,8 @@ classdef StreamCollector< handle & DataStream
         StreamT=[];
         StreamData=[];
         DataReadyEventObj=EventStruct;
+        BatchT=[];
+        BatchData=[];
     end
     
     methods
@@ -84,8 +86,8 @@ classdef StreamCollector< handle & DataStream
                 return;
             end
             
-            ts=obj.StreamT;
-            data=obj.StreamData;
+            ts=obj.BatchT;
+            data=obj.BatchData;
             
             if(~isempty(ts) && e.TimeStamps(end)<ts(1))
                 ts=[];
@@ -101,28 +103,47 @@ classdef StreamCollector< handle & DataStream
                 ts(end+1:end+dlen)=e.TimeStamps;
             end
             
-            if(~isempty(ts))
+            if(isempty(ts))
                 % finding the locaiton where to slice.
-                offset=(ts(end)-obj.CollectDT); % from end
-                idxs=find(ts>offset);
-                data=data(idxs);
-                ts=ts(idxs);
-            else
                 data=[];
                 ts=[];
             end
             
-            obj.StreamT=ts;
-            obj.StreamData=data;
-            obj.Data=data;
-            obj.Timestamps=ts;        
+            obj.BatchT=ts;
+            obj.BatchData=data;      
             
             curT=obj.nowInTimebase();
             obj.LastReadTimestamp=curT;
             if(curT-obj.LastUpdateTimestamp>obj.UpdateDT)
+                bt=obj.BatchT;
+                bd=obj.BatchData;
+                obj.BatchT=[];
+                obj.BatchData=[];
+                
+                lt=length(bt);
+                obj.StreamT(end+1:end+lt)=bt;
+                obj.StreamData(end+1:end+lt,:)=bd;
+                
+                [obj.StreamT,obj.StreamData]=...
+                    obj.SliceToOffset(obj.StreamT,obj.StreamData);
+
                 obj.LastUpdateTimestamp=curT;
-                obj.notify('DataReady',obj.DataReadyEventObj);
+                ev=DAQEventStruct();
+                ev.Data=bd;
+                ev.TimeStamps=bt;
+                ev.Elapsed=e.Elapsed;
+                ev.CompElapsed=e.CompElapsed;
+                ev.TotalTicksSinceStart=e.TotalTicksSinceStart;
+                ev.AccumilatedClockOffset=e.AccumilatedClockOffset;
+                obj.notify('DataReady',ev);
             end
+        end
+        
+        function [ts,data]=SliceToOffset(obj,ts,data)
+            offset=(ts(end)-obj.CollectDT); % from end
+            idxs=find(ts>offset);
+            data=data(idxs);
+            ts=ts(idxs);            
         end
     end
 end

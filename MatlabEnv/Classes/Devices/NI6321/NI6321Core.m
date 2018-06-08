@@ -47,21 +47,14 @@ classdef NI6321Core < Device & TimeBasedObject
             if(isempty(s))
                 return;
             end
-            if(~s.IsRunning)
-                %disp('Called stop on a non running session.');
-                return;
-            end
-            fprintf(['Stopping ',obj.name,' (',class(obj),')...']);
-            try
+            fprintf([obj.name,' (',class(obj),': ']);
+            if(s.IsRunning)
+                fprintf('Stopping ...');
                 s.stop();
-            catch
+                fprintf('stopped. ');
             end
-            fprintf('stopped, releasing resources...');
-            try
-                s.release();
-            catch
-            end
-            
+            fprintf('Releasing resources...');
+            s.release();
             %wait(s);
             obj.LastStopTime=now;
             fprintf(['Done.',newline]);
@@ -73,7 +66,10 @@ classdef NI6321Core < Device & TimeBasedObject
         
         % sets the max read chunk size.
         function SetMaxReadChunkSize(obj,size)
-            obj.niSession.NotifyWhenDataAvailableExceeds=size;
+            obj.niSession.IsNotifyWhenDataAvailableExceedsAuto=size<=0;
+            if(size>0)
+                obj.niSession.NotifyWhenDataAvailableExceeds=size;
+            end
         end
     end
     
@@ -126,6 +122,18 @@ classdef NI6321Core < Device & TimeBasedObject
             onDeviceConfigured@Device(obj);
         end
         
+        function clearClockTerms(obj)
+            s=obj.niSession;
+            for i=1:length(s.Connections)
+                con=s.Connections(i);
+                if(isa(con,'daq.ni.ScanClockConnection'))
+                    s.removeConnection(i);
+                    break;
+                end
+            end
+            obj.externalClockConnectionIndex=0;            
+        end
+        
         function []=makeExternalClockTerms(obj)
             s=obj.niSession;
             % checking for externalClock config.
@@ -137,15 +145,20 @@ classdef NI6321Core < Device & TimeBasedObject
                         [obj.niDevID,'/',obj.externalClockTerminal],'ScanClock');
                 end
             elseif(obj.externalClockConnectionIndex~=0)
-                for i=1:length(s.Connections)
-                    con=s.Connections(i);
-                    if(isa(con,'daq.ni.ScanClockConnection'))
-                        s.removeConnection(i);
-                        break;
-                    end
-                end
-                obj.externalClockConnectionIndex=0;
+                obj.clearClockTerms();
             end
+        end
+        
+        function clearTirggerTerms(obj)
+            s=obj.niSession;
+            for i=1:length(s.Connections)
+                con=s.Connections(i);
+                if(isa(con,'daq.ni.StartTriggerConnection'))
+                    s.removeConnection(i);
+                    break;
+                end
+            end
+            obj.hasTrigger=0;
         end
         
         function []=makeTriggerTerms(obj)
@@ -159,14 +172,7 @@ classdef NI6321Core < Device & TimeBasedObject
                     %trg.TriggerCondition=
                 end
             elseif(obj.hasTrigger~=0)
-                for i=1:length(s.Connections)
-                    con=s.Connections(i);
-                    if(isa(con,'daq.ni.StartTriggerConnection'))
-                        s.removeConnection(i);
-                        break;
-                    end
-                end
-                obj.hasTrigger=0;
+                obj.clearTirggerTerms();
             end
         end
         

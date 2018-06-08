@@ -1,35 +1,44 @@
-classdef SpinCoreAPI < handle
+classdef SpinCoreAPI < DllAPI
 
     methods
         % Spincore library config.
-		function [obj] = SpinCoreAPI(LibraryFile,LibraryHeaders,LibraryName)
-            if(~exist('LibraryFile','var'))LibraryFile=SpinCoreAPI.DefaultLibFile;end
-            if(~exist('LibraryHeader','var'))LibraryHeaders=SpinCoreAPI.DefaultHeaderFiles;end
-            if(~exist('LibraryName','var'))LibraryName=SpinCoreAPI.DeafultLibName;end
-            
-            if(ischar(LibraryHeaders))
-                LibraryHeaders={LibraryHeaders};
-            end
-            obj.LibraryFile = LibraryFile;
-            obj.LibraryHeaders = LibraryHeaders;
-            obj.LibraryName = LibraryName;
+		function [obj] = SpinCoreAPI(varargin)
+            obj@DllAPI(varargin{:});
+%             if(~exist('LibraryFile','var'))LibraryFile=SpinCoreAPI.DefaultLibFile;end
+%             if(~exist('LibraryHeader','var'))LibraryHeaders=SpinCoreAPI.DefaultHeaderFiles;end
+%             if(~exist('LibraryName','var'))LibraryName=SpinCoreAPI.DeafultLibName;end
+%             
+%             if(ischar(LibraryHeaders))
+%                 LibraryHeaders={LibraryHeaders};
+%             end
+%             obj.LibraryFile = LibraryFile;
+%             obj.LibraryHeaders = LibraryHeaders;
+%             obj.LibraryName = LibraryName;
+%             
+%             obj.Load();
+%             obj.Init();
         end
+    end    
+    
+    properties (SetAccess = protected)
+        LibraryHeaders={...
+            'C:\SpinCore\SpinAPI\include\spinapi.h',...
+            'C:\SpinCore\SpinAPI\include\pulseblaster.h',...
+            };
+        LibraryFile='C:\SpinCore\SpinAPI\lib\spinapi64.dll';
+        LibraryName='SPINCOREAPILIB';
     end
     
     properties (Constant)
         DefaultHeaderFiles={...
             'C:\SpinCore\SpinAPI\include\spinapi.h',...
-            %'C:\SpinCore\SpinAPI\include\spinpts.h',...
+            'C:\SpinCore\SpinAPI\include\pulseblaster.h',...
             };
         DefaultLibFile='C:\SpinCore\SpinAPI\lib\spinapi64.dll';
         DeafultLibName='SPINCOREAPILIB';
     end
     
 	properties (SetAccess = protected)
-		LibraryFile % spinapi.dll file
-		LibraryHeaders % path to spinapi.h file (and others)
-		LibraryName % alias of loaded library
-        IsInitialized=false;
         InstructionsCount=0;
     end
 	
@@ -55,40 +64,22 @@ classdef SpinCoreAPI < handle
         SIX_PERIOD      = hex2dec('C00000');
         ON				= hex2dec('E00000');
     end
-
-	methods
-		function Load(obj)
-			if ~libisloaded(obj.LibraryName)
-                arglst={...
-                    obj.LibraryFile,...
-                    obj.LibraryHeaders{1},...
-                    'alias',obj.LibraryName};
-                if(length(obj.LibraryHeaders)>1)
-                    for i=2:length(obj.LibraryHeaders)
-                        hdr=obj.LibraryHeaders{i};
-                        arglst{end+1}='addheader';
-                        arglst{end+1}=hdr;
-                    end
-                end
-                loadlibrary(arglst{:});
-			end
-        end
-        
-        function Unload(obj)
-            if ~libisloaded(obj.LibraryName)return;end
-            unloadlibrary(obj.LibraryName);
-        end
-		
-        function Init(obj)
+    
+    methods (Access = protected)
+        function [rt]=init(obj)
             obj.InstructionsCount=0;
             [err] = calllib(obj.LibraryName,'pb_init');
             if err ~= 0
                 error(['Error Loading PulseBlaster Board: ',num2str(err)]);
+                rt=false;
             else
-                obj.IsInitialized=1;
+                rt=true;
             end
         end
-        
+    end
+
+	methods
+
         function Close(obj)
             obj.InstructionsCount=0;
             [err] = calllib(obj.LibraryName,'pb_close');

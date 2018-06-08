@@ -89,8 +89,7 @@ classdef SpinCoreBase < Device & TimeBasedObject
         end
     end
     
-    methods
-        
+    methods        
         function []=setClockRate(obj,rate)
             setClockRate@TimeBasedObject(obj,rate);
             obj.MinimalInstructionTime=...
@@ -104,14 +103,13 @@ classdef SpinCoreBase < Device & TimeBasedObject
         
         function []=stop(obj)
             api=obj.CoreAPI;
-            api.Stop();            
+            api.Stop();
         end
         
         function []=prepare(obj)
             prepare@Device(obj);
             api=obj.CoreAPI;
             api.Reset();
-            
         end
         
         function []=run(obj)
@@ -133,14 +131,10 @@ classdef SpinCoreBase < Device & TimeBasedObject
     
     % core api static getters and setters
     methods (Static)
-        function api=GetCoreAPI(LibraryFile,LibraryHeaders,LibraryName)
+        function api=GetCoreAPI(varargin)
             persistent coreapi;
             if(isempty(coreapi))                
-                if(~exist('LibraryFile','var'))LibraryFile=SpinCoreAPI.DefaultLibFile;end
-                if(~exist('LibraryHeader','var'))LibraryHeaders=SpinCoreAPI.DefaultHeaderFiles;end
-                if(~exist('LibraryName','var'))LibraryName=SpinCoreAPI.DeafultLibName;end
-
-                coreapi=SpinCoreAPI(LibraryFile,LibraryHeaders,LibraryName); % redo.
+                coreapi=SpinCoreAPI(varargin{:}); % redo.
             end
             api=coreapi;
         end

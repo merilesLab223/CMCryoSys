@@ -94,6 +94,9 @@ classdef TimeBinCollector < DataStream
                     data(end+1:end+dlen,:)=e.Data;
                     ts(end+1:end+dlen)=e.TimeStamps;
                 end
+                if(~iscolumn(ts))
+                    ts=ts';
+                end
                 obj.StreamT=ts;
                 obj.StreamData=data;                
             end

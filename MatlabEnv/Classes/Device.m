@@ -51,7 +51,7 @@ classdef Device < handle
         % the assumption is the device can be prepared at this time.
         function []=prepare(obj)
             if(~obj.isConfigured)
-                warning(['Called prepare on unconfigured device ',obj.name,'. Calling configure...']);
+                fprintf(['Configuring ',obj.name,' (',class(obj),') ...']);
                 obj.configure(); % call to configure if needed.
             end
         end
