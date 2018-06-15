@@ -19,6 +19,7 @@ classdef TimeBinCollector < DataStream
     methods
         function reset(obj)
             obj.Results={};
+            
         end
         
         function prepare(obj)
@@ -102,7 +103,11 @@ classdef TimeBinCollector < DataStream
             end
             
             % processing the bin data.
-            obj.processBinData();
+            try
+                obj.processBinData();
+            catch err
+                rethrow(err);
+            end
         end
         
         function processBinData(obj)
@@ -134,6 +139,11 @@ classdef TimeBinCollector < DataStream
             end
             obj.m_pendingBins(completedIdxs)=[];
             
+            % stop the execution if completed.
+            if(isempty(obj.m_pendingBins))
+                obj.stop();
+            end
+            
             % collecting data for the bins.
             for i=1:length(completedBinIdxs)
                 bidx=completedBinIdxs(i);
@@ -159,15 +169,29 @@ classdef TimeBinCollector < DataStream
             lbin=numel(obj.MeasureBins);
             lpend=numel(obj.m_pendingBins);
             obj.CompleatedPercent=100*(lbin-lpend)/lbin;
+%             
+%             
+%             tms=[num2str(sts),'->',num2str(ets)];
+%             if(isempty(completedBinIdxs))
+%                 disp([tms,': TBin empty tick.']);
+%             else
+%                 disp([tms,': Bins complete: ',num2str(completedBinIdxs)]);
+%             end
+%             
+            
+            for binIdx=completedBinIdxs
+                data=[];
+                if(length(obj.Results)>=binIdx)
+                    data=obj.Results{binIdx};
+                end
+                ev=TimeBinEventStruct(binIdx,data);
+                obj.notify('BinComplete',ev);
+            end
             
             if(isempty(obj.m_pendingBins))
-                % competed.
                 ev=EventStruct();
                 obj.stop(); % stop the reader since it was complete.
                 obj.notify('Complete',ev);
-            elseif(~isempty(completedBinIdxs))
-                ev=EventStruct();
-                obj.notify('BinComplete',ev);
             end
         end
         
@@ -204,14 +228,16 @@ classdef TimeBinCollector < DataStream
     end
 
     % timebin protected properties
-    properties (Access = protected)
+    properties (SetAccess = protected)
         % the collection of measurment tbins.
         MeasureBins={};
     end
     
     methods
         function clear(obj)
-            obj.tbins={};
+            obj.reset();
+            obj.MeasureBins={};
+            obj.curT=0;
         end
         
         function Measure(obj,duration)

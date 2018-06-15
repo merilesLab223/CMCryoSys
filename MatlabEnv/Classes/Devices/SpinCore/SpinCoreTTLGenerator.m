@@ -32,11 +32,15 @@ classdef SpinCoreTTLGenerator < SpinCoreBase & TTLGenerator
             if(loopn)
                 loopi=loops{1};
             end
+            minDur=obj.secondsToTimebase(obj.MinimalInstructionTime);
             for i=1:sdata(1)
                 % getting the data.
                 bi=zeros(1,32);
                 bi(1:sdata(2))=data(i,:);
                 duri=dur(i);
+                if(duri<minDur)
+                    duri=minDur;
+                end                
                 flags=bi2de(bi);
                 
                 % adding the isntruction.
@@ -80,11 +84,12 @@ classdef SpinCoreTTLGenerator < SpinCoreBase & TTLGenerator
             [t,bi]=obj.makeTTLTimedVectors(t,data);
             
             % finding similars to create sequence loops.
-            durations=round(diff([0,t./obj.getTimebase()])).*obj.getTimebase();
-            data=[durations',bi];
-            [data,loopinfo,vidxs]=SpinCoreTTLGenerator.FindLoopsAndReduce(data',500);
-            data=data(2:end,:)';
-            durations=durations(vidxs)';
+            durations=round(diff([t./obj.getTimebase()])).*obj.getTimebase();
+            durations=[durations;0];
+            data=[durations,bi];
+            [data,loopinfo,vidxs]=SpinCoreTTLGenerator.FindLoopsAndReduce(data,500);
+            data=data(:,2:end);
+            durations=durations(vidxs);
             
             loops={};
             slinfo=size(loopinfo);
@@ -130,12 +135,7 @@ classdef SpinCoreTTLGenerator < SpinCoreBase & TTLGenerator
             if(~exist('maxn','var'))maxn=Inf;end
             if(~exist('allowOverlap','var'))allowOverlap=0;end
             sdata=size(data);
-            l=sdata(2);
-            if(l==1 && max(sdata)>1)
-                % check wrong direction.
-                [unlooped,loopi,loopn]=SpinCoreTTLGenerator.FindLoops(data',maxn);
-            end
-            
+            l=sdata(1);
             src=[];
             lidx=1;
             loopinfo=[];
@@ -148,10 +148,10 @@ classdef SpinCoreTTLGenerator < SpinCoreBase & TTLGenerator
             
             for i=1:l
                 % case something was already found.
-                unlooped(:,end+1)=data(:,i);
+                unlooped(end+1,:)=data(i,:);
                 if(lastMatchLength~=0)
                     % check succesive is ok.
-                    if(~isequal(src(:,sidx),unlooped(:,end))) % check match.
+                    if(~isequal(src(sidx,:),unlooped(end,:))) % check match.
                         if(lastMatchLoopN>0)
                             % found something to write home about.
                             loopinfo(1,lidx)=lastMatchI;
@@ -176,12 +176,12 @@ classdef SpinCoreTTLGenerator < SpinCoreBase & TTLGenerator
                 if(lastMatchLength==0)
                     clen=1;
                     while(i-clen>minSearchI && clen<=maxn)
-                        if(isequal(unlooped(:,end),unlooped(:,i-clen)))
+                        if(isequal(unlooped(end,:),unlooped(i-clen,:)))
                             % found match lookback.
                             lastMatchI=i-clen;
                             lastMatchLength=clen;
                             lastMatchLoopN=0;
-                            src=unlooped(:,i-clen:i-1);
+                            src=unlooped(i-clen:i-1,:);
                             if(clen==1)
                                 sidx=1; % reset search.
                                 lastMatchLoopN=1;
@@ -220,8 +220,9 @@ classdef SpinCoreTTLGenerator < SpinCoreBase & TTLGenerator
             sinfo=size(linfo);
             sdata=size(data);
             removedIdxs=[];
-            vidxs=1:sdata(2);
-            
+            ld=sdata(1);
+            vidxs=1:ld;
+
             tic;
             newIndexs=zeros(sinfo(2),1);
             for i=1:sinfo(2)
@@ -244,7 +245,7 @@ classdef SpinCoreTTLGenerator < SpinCoreBase & TTLGenerator
             
             removedIdxs=unique(removedIdxs);
             vidxs(removedIdxs)=[];
-            data(:,removedIdxs)=[]; % matlab index issues.            
+            data(removedIdxs,:)=[]; % matlab index issues.            
         end
         
         function [n]=num2Chunks(num,max)

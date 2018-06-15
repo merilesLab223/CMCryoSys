@@ -1,32 +1,13 @@
-classdef TimeBasedObject < handle
+classdef TimeBasedObject < handle & TimeKeeper
     %TIMEBASEDENTITY Summary of this class goes here
     %   Detailed explanation goes here
-    
-    properties
-        % The timebase
-        timeUnitsToSecond=1/1000;
-
-        % the current time.
-        curT=0; 
-    end
     
     properties (SetAccess = protected)
         Rate=50000;   
     end
         
     % time methods
-    methods
-        % call to change the current device time.
-        % can have negative values.
-        function wait(obj,t)
-            obj.curT=obj.curT+t(1);
-        end
-        
-        % Call got go back in time.
-        function goBackInTime(obj,t)
-            obj.wait(-t);
-        end
-        
+    methods        
         % overridable set clock rate.
         function setClockRate(obj,r)
             obj.Rate=r;
@@ -47,20 +28,8 @@ classdef TimeBasedObject < handle
             tb=obj.getSecondsTimebase()/obj.timeUnitsToSecond;
         end
         
-        function [tb]=secondsToTimebase(obj,t)
-            tb=t/obj.timeUnitsToSecond;
-        end
-        
         function [tbs]=getSecondsTimebase(obj)
             tbs=(1./obj.Rate);
-        end
-        
-        function t=timebaseToSeconds(obj,t)
-            t=t*obj.timeUnitsToSecond;
-        end
-        
-        function [t]=nowInTimebase(obj)
-            t=now*24*60*60./obj.timeUnitsToSecond;
         end
     end
 end

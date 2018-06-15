@@ -52,9 +52,9 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
         % the position event will be called to execute data.
         function prepare(obj)
             % call base class.
-            if(obj.isConfigured)
-                obj.doResetSingleScan();
-            end
+%             if(obj.isConfigured)
+%                 obj.doResetSingleScan();
+%             end
             prepare@NI6321Core(obj,true);
             s=obj.niSession;
             data=obj.compile();
@@ -70,7 +70,8 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
             missing=2;
             missing=missing*obj.Rate;
             if(missing>0)
-                data=[data;data];
+                mdata=repmat(data(end,:),missing,1);
+                data=[data;mdata];
                 %s.queueOutputData(repmat(data(end,:),missing,1));
             end
             s.queueOutputData(data);
@@ -81,6 +82,12 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
             % prepare the session.
             s.prepare();
         end
+%         
+%         function single(obj)
+%             %obj.doResetSingleScan();
+%             obj.prepare();
+%             obj.single();
+%         end
         
         function run(obj)
             if(obj.totalExecutionTime<=0)

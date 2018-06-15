@@ -150,15 +150,18 @@ classdef ImageScan < Experiment
         function setPosition(exp,x,y)
             exp.Position.X=x;
             exp.Position.Y=y;
-            exp.update('Position');
-            exp.sendPositionToDevice();
+            %exp.update('Position');
+            exp.sendPositionToDevice(false);
         end
         
         function sendPositionToDevice(exp,delayed)
             if(~exist('delayed','var'))
-                delayed=5;
+                delayed=1;
             end
             
+            if(delayed==0)
+                exp.inv_sendPositionToDevice();
+            end
             if(isempty(exp.m_positionInvokeUpdateEventDispatch))
                 exp.m_positionInvokeUpdateEventDispatch=events.CSDelayedEventDispatch();
                 addlistener(exp.m_positionInvokeUpdateEventDispatch,'Ready',...
@@ -175,21 +178,22 @@ classdef ImageScan < Experiment
             end
             
             exp.StatusFlags.IsSettingPosition=true;
-            exp.update('StatusFlags');
-            
             exp.m_positionUpdateCalledWhileUpdatingPosition=false;
+            exp.update('StatusFlags')
             
             exp.Pos.stop();
             exp.Pos.clear();
 
             % set the single access clock rate.
-            exp.Pos.setClockRate(1000);
+            exp.Pos.setClockRate(10000);
             exp.Pos.triggerTerm=[];
             exp.Pos.externalClockTerminal=[];
             
             exp.Pos.GoTo(exp.Position.X,exp.Position.Y);
             exp.Pos.prepare();
             exp.Pos.run();
+            %exp.Pos.run();
+            pause(0.01);
             exp.Pos.stop();
             
             exp.StatusFlags.IsSettingPosition=false;
@@ -272,7 +276,7 @@ classdef ImageScan < Experiment
         end
         
         function SaveScanToImage(exp,fpath,saveMatFile)
-            if(~exist('saveMatFile','var'))
+            if(~exist('saveMatFile','var') || ~islogical(saveMatFile))
                 saveMatFile=true;
             end
             img=double(exp.ScanImage);
@@ -873,14 +877,14 @@ classdef ImageScan < Experiment
                 return;
             end   
             wasStreaming=exp.IsStreamingReader;
-            rslts=exp.ScanDataCollector.Results;
-            comp=exp.ScanDataCollector.CompleatedPercent;
+%             rslts=exp.ScanDataCollector.Results;
+%             comp=exp.ScanDataCollector.CompleatedPercent;
             exp.ScanDataCollector.stop();
             if(isa(exp.StreamDataCollector,'StreamCollector'))
                 exp.StreamDataCollector.stop();
             end
 
-            exp.ProcessScanResults(rslts,comp);
+            %exp.ProcessScanResults(rslts,comp);
             exp.IsWorking=false;
             exp.update('IsWorking');
             

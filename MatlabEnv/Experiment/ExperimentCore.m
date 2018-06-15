@@ -19,6 +19,11 @@ classdef ExperimentCore < Expose.Expose
     methods (Access = protected)
         function [o]=GetHandler(obj,id,e)
             import Expose.Core.*;
+            if(exist('id','var'))
+                % keeping the current alive since we recived a request for
+                % it.
+                obj.WebsocketBindings.keepAlive(id);
+            end
             % check if to get an experiment handler.
             % otherwise return the curent object as the handler.s
             getExperimentHandler=exist('id','var') && ~exist('e','var');
@@ -105,7 +110,9 @@ classdef ExperimentCore < Expose.Expose
                 return;
             end
             disp(['Destroying experiment for websocket ',sid,' ... ']);
+            oldExp=obj.WebsocketBindings(sid);
             obj.WebsocketBindings.remove(sid);
+            delete(oldExp);
             disp(['Destruction complete, ',sid]);
         end
     end
@@ -145,7 +152,7 @@ classdef ExperimentCore < Expose.Expose
                 end
                 error(['File ',fpath,' not found. Experiment class cannot be validated.']);
             end
-            fpath=lower(fpath);
+            %fpath=lower(fpath);
             if(filesep=='\')
                 fpath=replace(fpath,'/',filesep);
             else
@@ -158,9 +165,15 @@ classdef ExperimentCore < Expose.Expose
                 expClassInfo=struct();
                 expClassInfo.id=expose_short_hash(fpath);
                 expClassInfo.path=fpath;
+                expClassInfo.fileName=[];
+                expClassInfo.fileExt=[];
                 
                 % loading the class name (as the filename).
-                [expClassInfo.directory,~,~]=fileparts(fpath);
+                [expClassInfo.directory,expClassInfo.fileName,expClassInfo.fileext]=...
+                    fileparts(fpath);
+                if(endsWith(expClassInfo.fileName,'.'))
+                    expClassInfo.fileName=expClassInfo.fileName(1:end-1);
+                end
                 addpath(expClassInfo.directory);
                 
                 % temp and path
@@ -173,6 +186,13 @@ classdef ExperimentCore < Expose.Expose
             if(~strcmp(code,expClassInfo.code))
                 expClassInfo.code=code;
                 className=regexp(code,'(?<=classdef *)\w+','match','once');
+                if(~strcmp(className,expClassInfo.fileName))
+                    % need to replace and rewrite all text.
+                    code=regexprep(code,...
+                        '(?<=classdef *)\w+',expClassInfo.fileName,'once');
+                    filewrite(fpath,code);
+                    className=expClassInfo.fileName;
+                end
                 expClassInfo.className=className;
                 expClassInfo.make=@()eval(className);
             end

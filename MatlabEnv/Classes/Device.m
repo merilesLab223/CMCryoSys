@@ -55,6 +55,10 @@ classdef Device < handle
                 obj.configure(); % call to configure if needed.
             end
         end
+        
+        % general function stop.
+        function stop(dev)
+        end
     end
     
     methods (Abstract)

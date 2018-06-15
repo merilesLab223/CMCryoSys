@@ -35,11 +35,26 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
 
     properties (Access=protected)
         DataAvailableEventListener=[];
+        dataBatchIndex=0;
+        lastDataBatchTime=-1;
     end
     
     % called when data is ready.
     methods (Access = protected)
+        function debugVebroseDataBatchTimes(obj)
+            dt=0;
+            nowt=now;
+            if(obj.lastDataBatchTime>=0)
+                dt=nowt-obj.lastDataBatchTime;
+                dt=dt*24*60*60*1000;
+            end
+            obj.lastDataBatchTime=nowt;
+            obj.dataBatchIndex=obj.dataBatchIndex+1;
+            disp(['Data batch: ',num2str(obj.dataBatchIndex),' dt: ',num2str(dt)]);            
+        end
+        
         function dataBatchAvailableFromDevice(obj,s,e)
+            %obj.debugVebroseDataBatchTimes();
             try
                 if(obj.IsTMReaderDeleted) % check for clear all deleted.
                     return;
@@ -76,12 +91,12 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
         function postNextDataBatch(obj,dbatch)
             if(isempty(obj.m_processDataEventDispatch))
                 obj.m_processDataEventDispatch=events.CSDelayedEventDispatch();
-                
                 obj.m_processDataEventDispatch.addlistener('Ready',...
                     @obj.processWaitingDataBatches);
             end
             obj.m_processDataEventDispatchWaiting{end+1}=dbatch;
             obj.m_processDataEventDispatch.trigger(1);
+            %obj.processWaitingDataBatches([],[]);
         end
         
         function processWaitingDataBatches(obj,s,e)
@@ -121,7 +136,7 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
                 lastPos=idxs(end)+1;
             end
             
-            % salve old device timestamps;
+            % save old device timestamps;
             devts=ts;
 
             if(obj.UseAccumilatedTickCountForTime)
@@ -144,14 +159,6 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
             ev.Elapsed=obj.secondsToTimebase(obj.TickCount/obj.Rate);
             ev.CompElapsed=obj.secondsToTimebase(...
                 (now-obj.FirstDataBatchTimestamp)*24*60*60);
-%             ev.AccumilatedClockOffset=accumTimeOffset-ev.Elapsed;
-%             
-%             if(ev.AccumilatedClockOffset>obj.AccumilatedOffsetWarningTime)
-%                 warning(['Accumilated datareader offset is large, [ms] ',...
-%                         num2str(ev.AccumilatedClockOffset)]);
-%                 obj.FirstDataBatchTimestamp=-1;
-%             end
-%             
             try
                 obj.notify("DataReady",ev);
             catch err

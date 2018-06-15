@@ -31,44 +31,78 @@ classdef TTLGenerator < TimeBasedSignalGenerator
     % TTL Methods
     methods        
         % Set the values to be down for period t.
-        function Set(obj,b,durations,n,chan) % with repeptitons
-            if(~exist('n','var'))n=1;end % number of repetitions
-            if(~exist('chan','var'))chan=obj.Channel;end
-            if(~exist('durations','var'))
-                durations=(1:length(b))*obj.getTimeBase();
+        function Set(obj,b,t,dur,n,chan) % with repeptitons
+            if(~exist('n','var'))
+                n=1;% number of repetitions
+            end 
+            if(~exist('chan','var'))
+                chan=obj.Channel;
             end
+            
+            lv=length(b);
+            if(~exist('dur','var'))
+                dur=ones(size(t))*obj.getTimeBase();
+            end
+            
             if(~isnumeric(chan) && ~isvector(chan))
                 error('Channel must be the channel index. 1...INF');
             end
-            if(length(b)~=length(durations))
-                error('Binary data length must be the same as duration vectpr');
+            if(length(dur)==1)
+                dur=ones(size(t))*dur;
             end
-            data=struct('dur',durations,'b',b,'chan',chan,'n',n);
-            waitFor=sum(durations*n);
-            obj.appendSequence(data,waitFor);
+            if(length(b)~=lv ||length(t)~=lv)
+                error('Must be that length(b)==length(t)');
+            end
+            [maxt,maxti]=max(t);
+            mtdur=dur(maxti);
+            cycleDur=(maxt+mtdur);
+            
+            data=struct('t',t+obj.curT,'b',b,'chan',chan,'cycle',cycleDur,'n',n);
+            obj.appendSequence(data,cycleDur*n);
         end
         
         % Set the values to be up for period t.
-        function Up(obj,t,c)
-            if(~exist('c','var'))c=obj.Channel;end
+        function Up(obj,t,c,dur)
+            if(~exist('c','var'))
+                c=obj.Channel;
+            end
             if(~exist('t','var'))
                 t=obj.getTimebase();
             end
-            obj.Set(ones(length(t),1),t,1,c);
+            if(~exist('dur','var'))
+                dur=obj.defaultPulseWidth;
+            end
+            obj.Set(ones(size(t)),t,dur,1,c);
         end
         
         % Set the values to be down for period t.
-        function Down(obj,t,c)
-            if(~exist('c','var'))c=obj.Channel;end
-            if(~exist('t','var'))t=obj.getTimebase();end
-            obj.Set(zeros(length(t),1),t,1,c);
+        function Down(obj,t,c,dur)
+            if(~exist('dur','var'))
+                dur=obj.defaultPulseWidth;
+            end
+            if(~exist('c','var'))
+                c=obj.Channel;
+            end
+            if(~exist('t','var'))
+                t=obj.getTimebase();
+            end
+            if(~exist('dur','var'))
+                dur=obj.defaultPulseWidth;
+            end
+            obj.Set(zeros(size(t)),t,dur,1,c);
         end 
         
-        function Pulse(obj,tup,tdown,c)
-            if(~exist('c','var'))c=obj.Channel;end            
-            if(~exist('tup','var'))tup=obj.defaultPulseWidth;end
-            if(~exist('tdown','var'))tdown=obj.getTimebase();end
-            obj.PulseTrain(1,tup,tdown,c);
+        function Pulse(obj,t,durUp,c,durDown)
+            if(~exist('c','var'))
+                c=obj.Channel;
+            end
+            if(~exist('durUp','var'))
+                durUp=obj.defaultPulseWidth;
+            end
+            if(~exist('durDown','var'))
+                durDown=obj.getTimebase();
+            end
+            obj.PulseTrain(t,1,durUp,c,durDown);
         end
         
         function ClockSignal(obj,dur,freq,c,dutyCycle)
@@ -79,24 +113,45 @@ classdef TTLGenerator < TimeBasedSignalGenerator
             tdown=tup*(1-dutyCycle);
             tup=tup*dutyCycle;
             n=ceil(dur/(tup+tdown));
-            obj.PulseTrain(n,tup,tdown,c);
+            obj.PulseTrain(0,n,tup,c,tdown);
         end
         
-        function PulseTrain(obj,n,tup,tdown,c)
-            if(~exist('c','var'))c=obj.Channel;end            
-            if(~exist('n','var'))n=1;end
-            if(~exist('tup','var'))tup=obj.defaultPulseWidth;end
-            if(~exist('tdown','var'))tdown=obj.getTimebase();end
-            
-            if(~isnumeric(tup) || ~isnumeric(tdown))
-                error('A pulse is defined buy n repeats and up/down times (numeric).');
+        function PulseTrain(obj,t,n,durUp,c,durDown)
+            if(~exist('n','var') || isempty(n))
+                n=1;
             end
-%             
-%             data=;
-% %             
-% %             data=struct('tup',tup,'tdown',tdown,'c',c,'isPulse',1,'n',n);    
-% %             tt=(tup+tdown)*n;
-            obj.Set([1,0],[tup,tdown],n,c);
+            if(~exist('c','var') || isempty(c))
+                c=obj.Channel;
+            end
+            if(~exist('durUp','var') || isempty(durUp))
+                durUp=obj.defaultPulseWidth;
+            end
+            if(~exist('durDown','var') || isempty(durDown))
+                durDown=obj.getTimebase();
+            end
+            
+            lv=length(t);
+            if(length(durUp)==1)
+                durUp=ones(size(t))*durUp;
+            end
+            if(length(durDown)==1)
+                durDown=ones(size(t))*durDown;
+            end
+            tval=zeros(size(t));
+            bval=zeros(size(t));
+            dur=zeros(size(t));
+            uidxs=1:2:lv*2;
+            didxs=2:2:lv*2;
+            
+            tval(uidxs)=t;
+            bval(uidxs)=1;
+            dur(uidxs)=durUp;
+            
+            tval(didxs)=t+durUp;
+            bval(didxs)=0;
+            dur(didxs)=durDown;
+            
+            obj.Set(bval,tval,dur,n,c);
         end
         
         %clear the data.
@@ -108,38 +163,114 @@ classdef TTLGenerator < TimeBasedSignalGenerator
     
     % compilation methods.
     methods(Access = protected)
-        function [t,bvals]=makeTTLTimedVectors(obj,timestamps,data)
+        function [t,bvec]=makeTTLTimedVectors(obj,timestamps,data)
             % sorting.
             [timestamps,sidx]=sort(timestamps);
             data(:)=data(sidx);
             
-            bvals=[];
-            t=[];
+            % searching for basic parmeters
+            maxChan=0;
+            ltot=0;
+            for i=1:length(timestamps)
+                idata=data{i};
+                ltot=ltot+length(idata.t)*idata.n;
+                if(max(idata.chan)>maxChan)
+                    maxChan=max(idata.chan);
+                end
+            end
+            
+            % need to convert to time/bit value.
+            %basecv=ones(1,maxChan+1)*-1;
+            bvals=ones(ltot,maxChan+1)*-1;
+            t=ones(ltot,1);
+            cpos=0;
             for i=1:length(timestamps)
                 % timestamp.
                 idata=data{i};
-                ld=length(idata.dur);
-                ti=idata.dur;
-                bi=idata.b;
+                ni=validatevector(idata.n);
+                if(ni==0)
+                    continue;
+                end             
+                ld=length(idata.t);
+                ti=validatevector(idata.t);
+                bi=validatevector(idata.b);
                 
-                if(idata.n>1)
-                    ld=ld*idata.n;
-                    repn=floor(idata.n);
-                    ti=repmat(ti,1,repn);
-                    bi=repmat(bi,1,repn);
+                toffset=ones(size(ti))*idata.cycle;
+                toffset=toffset*[0:ni-1];
+                toffset=toffset(:);
+                ti=repmat(ti,ni,1)+toffset;
+                bi=repmat(bi,ni,1);
+                
+                % converting to channels.
+%                 cbi=basecv; % all current channels.
+%                 cbi(idata.chan+1)=1;
+%                 bi=bi*cbi;
+                t(cpos+1:cpos+ld*ni)=ti;
+                for c=idata.chan
+                    bvals(cpos+1:cpos+ld*ni,c+1)=bi;
                 end
                 
-                % updating times.
-                ti=timestamps(i)+cumsum(ti);
-                
-                % adding to times.
-                t(end+1:end+ld)=ti;
-                bi=repmat(bi,length(idata.chan),1);
-                bvals(end+1:end+ld,idata.chan+1)=bi';
+                cpos=cpos+ld*ni;
             end
             
-            [t,sidx]=unique(t);
-            bvals=bvals(sidx,:);
+            % sort the data.
+            [t,sidxs]=sort(t);
+            bvals=bvals(sidxs,:);
+            ut=unique(t);
+            lut=length(ut);
+            bvec=zeros(lut,maxChan+1);
+            
+            % merge the data.
+            utidx=1;
+            curb=zeros(1,maxChan+1);
+            for i=1:length(t)
+                ti=t(i);
+                bi=bvals(i,:);
+                while(ti~=ut(utidx))
+                    utidx=utidx+1;
+                    if(utidx>lut)
+                        break;
+                    end
+                end
+                if(utidx>lut)
+                    break;
+                end
+                
+                % updating the curb.
+                vidxs=find(bi>-1);
+                curb(vidxs)=bi(vidxs);
+                bvec(utidx,:)=curb;
+            end
+            
+            t=ut;
+            
+%             sbvals=size(bvals);
+            
+%             tall=t;
+%             t=unique(t);
+%             tidxs=1:length(t);
+%             bvalAll=bvals;
+%             bvals=zeros(length(t),maxChan+1);
+%            
+%             % on all channels.
+%             for c=1:sbvals(2)
+%                 cbvals=bvalAll(:,c);
+%                 % filtering all of -1.
+%                 cvalidIdxs=find(cbvals>-1);
+%                 cbvals=cbvals(cvalidIdxs);
+%                 % filtering all unqiue,
+%                 [ct,ctidxs]=unique(tall(cvalidIdxs),'last');
+%                 cbvals=cbvals(ctidxs);
+%                 
+%                 totidxs=interp1(t,tidxs,ct,'previous');
+%                 bvals(totidxs,c)=cbvals;
+%             end [tidxs]=interp1(ut,1:length(ut),t,'previous');
+%             
+%             % fillup.
+%             for i=1:length(t)
+%                 bv=bvalAll(i,:);
+%             end
+            
         end
     end
 end
