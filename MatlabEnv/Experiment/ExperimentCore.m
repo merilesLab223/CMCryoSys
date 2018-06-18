@@ -68,7 +68,15 @@ classdef ExperimentCore < Expose.Expose
             % no handler destruction since experiment should persist.
             % TODO: move the keep alive and other pesistant implementation 
             % to the expose.
-            obj.unbindWebsocket(id);
+            if(~obj.isWebsocketBound(id))
+                return;
+            end
+            disp(['Destroying experiment for websocket ',id,' ... ']);            
+            disp(['Destruct message: ',e.Message.Text]);
+            oldexp=obj.unbindWebsocket(id);
+            delete(oldexp);
+            disp(['Destruction complete, ',id]);
+            
         end
     end
     
@@ -102,18 +110,24 @@ classdef ExperimentCore < Expose.Expose
             obj.WebsocketBindings(sid)=exp;
         end
         
-        function unbindWebsocket(obj,sid)
+        function [rt]=isWebsocketBound(obj,sid)
+            rt=false;
             if(~isvalid(obj.WebsocketBindings))
                 return;
             end
             if(~obj.WebsocketBindings.contains(sid))
                 return;
+            end       
+            rt=true;
+        end
+        
+        function [oldExp]=unbindWebsocket(obj,sid)
+            oldExp=[];
+            if(~obj.isWebsocketBound(sid))
+                return;
             end
-            disp(['Destroying experiment for websocket ',sid,' ... ']);
             oldExp=obj.WebsocketBindings(sid);
             obj.WebsocketBindings.remove(sid);
-            delete(oldExp);
-            disp(['Destruction complete, ',sid]);
         end
     end
     

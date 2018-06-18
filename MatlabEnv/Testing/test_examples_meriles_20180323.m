@@ -112,7 +112,7 @@ pos.toRounded(1);
 
 %% adjust the clocks.
 % find min time.
-crate=floor(2/(pos.findMinimalTime()*pos.timeUnitsToSecond));
+crate=floor(2/(pos.getMinDuration()*pos.timeUnitsToSecond));
 maxClockFreq=50000;
 if(crate>maxClockFreq)
     warntext=['LOSS OF DATA? The required clock rate, ',num2str(crate),' is above the '...
@@ -168,7 +168,7 @@ dcol.Measure(ones(mbins,1)*mtdt); % measure by durations.
 subplot(2,1,1);
 disp('Compiling path...');
 tic;
-[x,y,t]=pos.getCompiledPathVectors();
+[x,y,t]=pos.getPathVectors();
 [mt,mdt]=dcol.getMesaurementParams();
 plot(t,x,t,y,mt+mdt,zeros(length(mt),1),'*');
 comp=toc;

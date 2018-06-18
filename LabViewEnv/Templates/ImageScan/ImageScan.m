@@ -35,7 +35,7 @@ classdef ImageScan < Experiment
         HasBeenInitialized=false;
         IsWorking=false;
         StatusFlags=struct();
-        
+        DisplayInfo=struct();
     end
     
     % internal properties, to be used with other parameters.
@@ -155,7 +155,7 @@ classdef ImageScan < Experiment
         end
         
         function sendPositionToDevice(exp,delayed)
-            if(~exist('delayed','var'))
+            if(~exist('delayed','var') || ~isnumeric(delayed))
                 delayed=1;
             end
             
@@ -185,15 +185,15 @@ classdef ImageScan < Experiment
             exp.Pos.clear();
 
             % set the single access clock rate.
-            exp.Pos.setClockRate(10000);
+            exp.Pos.setClockRate(1000);
             exp.Pos.triggerTerm=[];
             exp.Pos.externalClockTerminal=[];
-            
+
             exp.Pos.GoTo(exp.Position.X,exp.Position.Y);
             exp.Pos.prepare();
             exp.Pos.run();
             %exp.Pos.run();
-            pause(0.01);
+            pause(0.1);
             exp.Pos.stop();
             
             exp.StatusFlags.IsSettingPosition=false;
@@ -371,6 +371,7 @@ classdef ImageScan < Experiment
         Clock=[];
         Reader=[];
         ScanDevices=[];
+        
     end
     
     % device private values
@@ -671,6 +672,7 @@ classdef ImageScan < Experiment
     % Scan internal propeties
     properties (Access = private)
         m_curScanDwellTime=0;
+        m_activeTempFile=[];
     end
     
     % Scanning methods
@@ -704,6 +706,7 @@ classdef ImageScan < Experiment
             exp.ImageProperties.Height=h;
             exp.ImageProperties.FromCenter=exp.ScanParameters.FromCenter;
             exp.update('ImageProperties');
+
             
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % adjusting the scan parameters.
@@ -721,6 +724,21 @@ classdef ImageScan < Experiment
             end
             
             exp.m_curScanDwellTime=dwell;
+            
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            %%% checking for temp file.
+            if(exp.ScanConfig.SaveTempFiles)
+                % need to save temp files while scanning.
+                tmpname=['(',num2str(x0,5),',',num2str(y0,5),')+',...
+                    '(',num2str(w),'x',num2str(h),') ',num2str(dwell,5),'[ms]'];
+                exp.m_activeTempFile=exp.getNextScanTempFile(tmpname);
+            else
+                tmpname=[];
+                exp.m_activeTempFile=[];
+            end
+            
+            exp.updateTempFileList();
+            exp.DisplayInfo.DisplayedFile=tmpname;
             
             % clock rates and configurations.
             % calculated by the position clock rate(niquist);
@@ -750,16 +768,6 @@ classdef ImageScan < Experiment
             
             triggerTerm=clockTerm;
                                     
-%             readChunkSize=exp.StreamConfig.UpdateTime/...
-%                 exp.Reader.secondsToTimebase(1/measureClockRate);
-%                         
-%             % setting the device parameters.
-%             if(readChunkSize<100)
-%                 readChunkSize=100;
-%             elseif(readChunkSize>5000)
-%                 readChunkSize=5000;
-%             end
-            
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % Set info to devices.
 
@@ -844,7 +852,7 @@ classdef ImageScan < Experiment
             exp.ScanDataCollector.Measure(mtbins);
             exp.ScanDataCollector.reset();
             exp.StreamDataCollector.reset();
-            
+
             %%%%%%%%%%%%%%%%%%%%%%%%%
             % prepare and run.
             
@@ -875,10 +883,8 @@ classdef ImageScan < Experiment
             % finalizing.
             if(~isa(exp.ScanDataCollector,'TimeBinCollector'))
                 return;
-            end   
+            end
             wasStreaming=exp.IsStreamingReader;
-%             rslts=exp.ScanDataCollector.Results;
-%             comp=exp.ScanDataCollector.CompleatedPercent;
             exp.ScanDataCollector.stop();
             if(isa(exp.StreamDataCollector,'StreamCollector'))
                 exp.StreamDataCollector.stop();
@@ -913,7 +919,65 @@ classdef ImageScan < Experiment
 %            exp.ScanImage=exp.ScanImage;
             exp.ScanProgress=comp;
             exp.update({'ScanProgress'});
+            
+            if(~isempty(exp.m_activeTempFile))
+                
+            end
         end
+        
+        function [fn]=getNextScanTempFile(exp,name)
+            [tempdir]=fileparts(mfilename('fullpath'));
+            tempdir=[tempdir,filesep,'TempImages'];
+            if(~exist(tempdir,'dir'))
+                mkdir(tempdir);
+            end
+            % cleaning old files if needed.
+            exp.cleanupTempAndLeaveN(tempdir,exp.ScanConfig.MaxNumberOfTempFiles);
+            % making the new temp file name.
+            fn=[datestr(now,'yymmdd.HHMMSS'),'.',name,'.mat'];
+            % make the file.
+            img=struct();
+            save([tempdir,filesep,fn],'img','-v7.3');
+        end
+        
+        function updateTempFileList(exp)
+%             [tempdir]=fileparts(mfilename('fullpath'));
+%             tempdir=[tempdir,filesep,'TempImages'];
+%             exp.DisplayInfo.TempFileList={};
+%             if(exist(tempdir,'dir'))
+%                 tinfo=dir(tempdir);
+%                 names=tinfo(:).name(:);
+%                 isdirs=tinfo(:).isdir(:);
+%                 exp.DisplayInfo.TempFileList=names(~isdirs);
+%             else
+%                 exp.DisplayInfo.TempFileList={};
+%             end
+        end
+    end
+    
+    methods(Static)
+        % cleanup the files in the directory and leave last n.
+        function cleanupTempAndLeaveN(fpath,N)
+            if(~exist(fpath,'dir'))
+                error(['Path not found or is not a folder: ',fpath]);
+            end
+            dinfo=dir(fpath);
+            names=dinfo(:).name;
+            mtimes=dinfo(:).datenum;
+            isdir=dinfo(:).isdir;
+            
+            names=names(~isdir);
+            mtimes=mtimes(~isdir);
+            nf=length(mtimes);
+            if(nf>N)
+                [~,idxs]=sort(mtimes);
+                names=names(idxs);
+                for i=1:(nf-N)
+                    % delete the file.
+                    delete([fpath,filesep,names{i}]);
+                end
+            end
+        end        
     end
 
     % cleanup and debug

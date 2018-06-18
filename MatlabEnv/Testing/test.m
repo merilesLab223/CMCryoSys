@@ -95,7 +95,7 @@ end
 %ImageScan(pos,-1,-1,2,2,n,n,0.01);
 pos.GoTo(0,0);
 tic;
-[x,y,t]=pos.getCompiledPathVectors();
+[x,y,t]=pos.getPathVectors();
 compt=toc;
 disp(['Procedure compliation time: ',num2str(compt)]);
 subplot(plotn,1,1);

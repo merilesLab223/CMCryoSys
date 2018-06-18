@@ -52,12 +52,15 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
         % the position event will be called to execute data.
         function prepare(obj)
             % call base class.
-%             if(obj.isConfigured)
-%                 obj.doResetSingleScan();
-%             end
             prepare@NI6321Core(obj,true);
             s=obj.niSession;
-            data=obj.compile();
+            
+            % reading the data.
+            [x,y]=obj.getPathVectors();
+            x=obj.NormalizeVectorToVoltageRange(x,obj.ChannelVolategeRange);
+            y=obj.NormalizeVectorToVoltageRange(y,obj.ChannelVolategeRange);            
+            data=[x,y];
+            
             spath=size(data);
             obj.totalExecutionTime=spath(1)*obj.getTimebase(); % in ms.
             
@@ -68,7 +71,8 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
             
             %totalSec=obj.timebaseToSeconds(obj.totalExecutionTime);
             missing=2;
-            missing=missing*obj.Rate;
+            % ticks missing
+            missing=ceil(missing/obj.getTimebase());
             if(missing>0)
                 mdata=repmat(data(end,:),missing,1);
                 data=[data;mdata];
@@ -82,13 +86,7 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
             % prepare the session.
             s.prepare();
         end
-%         
-%         function single(obj)
-%             %obj.doResetSingleScan();
-%             obj.prepare();
-%             obj.single();
-%         end
-        
+
         function run(obj)
             if(obj.totalExecutionTime<=0)
                 return;
@@ -113,77 +111,9 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
         function setClockRate(obj,r)
             obj.Rate=r;
             % needed since compilation has chaged.
-            obj.Invalidate();
+            obj.InvalidateTimedStream();
         end
     end
-    
-    % compilation ovveride
-    methods
-        % dose the sequence compilation.
-        function [rslt]=compileSequence(obj,timestamps,data)
-            % creating the data vectors according to          
-            obj.toRounded();
-            t=[];x=[];y=[]; % time vector is to identify duplicates.
-            comp=[];
-            for i=1:length(timestamps)
-                idata=data{i};
-                tv=timestamps(i)+idata.t; % current time vector.
-                tspan=min(tv):obj.getTimebase():max(tv);
-                lt=length(tspan);
-                
-                if(lt==0)
-                    toc;
-                    continue;
-                end
-                if(lt>1)
-                    xv=interp1(tv,idata.x,tspan,idata.method);
-                    yv=interp1(tv,idata.y,tspan,idata.method);      
-                else
-                    xv=idata.x;
-                    yv=idata.y;
-                end
-                % starting points (duplicate the first point if needed).
-                xv=[xv(1),xv];
-                yv=[yv(1),yv];
-                tspan=[timestamps(i),tspan];
-                if(isempty(t)&&tspan(1)>0)
-                    tspan(1)=0;
-                end
-                lt=lt+1;
-                
-                % appending
-                t(end+1:end+lt)=tspan;
-                x(end+1:end+lt)=xv;
-                y(end+1:end+lt)=yv;
-            end
-            
-            % appeding current time if needed.
-            [maxt,maxti]=max(t);
-            if(maxt<obj.curT)
-                % need to extend the time.
-                t(end+1)=obj.curT;
-                x(end+1)=x(maxti);
-                y(end+1)=y(maxti);
-            end
-
-            % remove duplicates.
-            [t,sidx]=unique(t,'last');
-            x=x(sidx);
-            y=y(sidx);
-            
-            % remaking the final vector. (In timeunits of seconds.
-            if(length(x)>1)
-                tspan=0:obj.getTimebase():max(t);
-                x=interp1(t,x,tspan,'previous');
-                y=interp1(t,y,tspan,'previous');
-            end
-            
-            x=obj.NormalizeVectorToVoltageRange(x,obj.ChannelVolategeRange);
-            y=obj.NormalizeVectorToVoltageRange(y,obj.ChannelVolategeRange);
-            
-            rslt=[x',y'];
-        end   
-    end    
     
     % static private methods
     methods(Static, Access = private)
