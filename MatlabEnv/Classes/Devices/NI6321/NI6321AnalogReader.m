@@ -10,6 +10,7 @@ classdef NI6321AnalogReader < NI6321Core & TimedMeasurementReader
         % constructor, and send info to parent.
         function obj = NI6321AnalogReader(varargin)
             obj=obj@NI6321Core(varargin);
+            parseAndAssignFromVarargin(obj,{'readchan'},varargin);
         end
     end
     

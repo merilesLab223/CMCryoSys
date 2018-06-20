@@ -4,10 +4,8 @@ classdef TimedDataStream < TimeKeeper
     %specialized data markers at specific timed locations.
     
     properties(Access = private)
-        m_tkEvents={};
-        m_tkEventsT=[];
-        m_tkData=[];
-        m_tkDataT=[];
+        m_tkEvents=[];
+        m_tkData={};
         m_tkStream={};
         m_tkStreamT={};
         m_tkIsValid=false;
@@ -41,6 +39,10 @@ classdef TimedDataStream < TimeKeeper
             end
             
             sdata=size(data);
+            if(min(sdata)==1 && ~iscolumn(data))
+                data=data';
+            end
+            
             if(sdata(1)~=length(t))
                 error('TimeKeeper:error:Length of vector t must be equal to the number of rows in data');
             end
@@ -62,41 +64,10 @@ classdef TimedDataStream < TimeKeeper
             obj.m_tkIsValid=false;
             
             % first remove duplicates from input.
-            [t,idxs]=unique(t,'last');
-            data=data(idxs,:);
-            
-            % finding the maximal channel.
-            maxChan=max(chans);
-            sdata=size(obj.m_tkData);
-            maxCurChan=sdata(2);
-            if(maxCurChan>maxChan)
-                maxChan=maxCurChan;
-            end   
-            
-            % for empties.
-            if(isempty(obj.m_tkDataT))
-                obj.m_tkDataT=t;
-                obj.m_tkData=zeros(length(t),maxChan);
-                obj.m_tkData(:,chans)=data;
-                return;
+            for i=1:length(chans)
+                c=chans(i);
+                obj.setChannelTimedData(c,t,data(:,i));
             end
-            
-            % need to remake the data by doing inserts.
-            % first make the new data sets.
-            [ct,cdata]=TimedDataStream.f_sInsertNewTimes(t,obj.m_tkDataT,obj.m_tkData,...
-                obj.PersistValuesWhenInsertingTimes);
-            
-            % interpolating to insert the new data values to appropriate t.
-            if(length(ct)==1)
-                ndidxs=1;
-            else
-                ndidxs=interp1(ct,1:length(ct),t,'previous','extrap');
-            end
-            cdata(ndidxs,chans)=data;
-            
-            % copy new data.
-            obj.m_tkDataT=ct;
-            obj.m_tkData=cdata;
         end
         
         function SetTimedEvent(obj,t,eventInfos)
@@ -113,52 +84,62 @@ classdef TimedDataStream < TimeKeeper
                 t=t';
             end
             
+            if(~iscolumn(eventInfos))
+                eventInfos=eventInfos';
+            end
+            
             obj.m_tkIsValid=false;
             
-            if(isempty(obj.m_tkEventsT))
-                obj.m_tkEventsT=t;
-                obj.m_tkEvents=eventInfos;
-                return;
-            end
-            
-            % checking for missing t values.
-            missingt=setdiff(t,obj.m_tkEventsT);
-            ct=[obj.m_tkEventsT;missingt];
-            cdata=[obj.m_tkEvents;cell(1,length(missingt))];
-            
-            % sorting the new times.
-            [ct,idxs]=sort(ct);
-            cdata=cdata(idxs);
-            
-            % inserting the new indexs.
-            if(length(ct)==1)
-                nidxs=1;
+            if(isempty(obj.m_tkEvents))
+                obj.m_tkEvents=struct();
+                obj.m_tkEvents.t=t;
+                obj.m_tkEvents.events=eventInfos;
             else
-                nidxs=interp1(ct,1:length(ct),t,'previous','extrap');
+                ct=obj.m_tkEvents.t;
+                cevents=obj.m_tkEvents.events;
+                ct=TimedDataStream.f_sInsertNewTimes(t,ct,[],false);
+                
+                % inserting the new indexs.
+                if(length(ct)==1)
+                    nidxs=1;
+                else
+                    nidxs=interp1(ct,1:length(ct),t,'previous','extrap');
+                end
+
+                cevents(nidxs)=eventInfos;     
+                obj.m_tkEvents.t=ct;
+                obj.m_tkEvents.events=cevents;
             end
-            
-            cdata(nidxs)=eventInfos;
-            
-            obj.m_tkEventsT=ct;
-            obj.m_tkEvents=cdata;
         end
         
         function clear(obj)
             obj.m_tkEvents={};
-            obj.m_tkEventsT=[];
-            obj.m_tkData=[];
-            obj.m_tkDataT=[];
+            obj.m_tkData={};
             obj.m_tkStream={};
             obj.m_tkStreamT=[];
             obj.m_tkIsValid=false;
             obj.curT=0;
         end
         
+        function [tvals]=getAllTimeValues(obj)
+            tvals=[];
+            for i=1:length(obj.m_tkData)
+                if(~isstruct(obj.m_tkData{i}))
+                    continue;
+                end
+                tvals=[tvals;obj.m_tkData{i}.t];
+            end
+            if(~isempty(obj.m_tkEvents))
+                tvals=[tvals;obj.m_tkEvents.t];
+            end   
+            tvals=unique(tvals);
+        end
+        
         function [mint]=getMinDuration(obj)
             % returns the minimal diffrence between all the times
             % in the data stream. If not min time is found (empty or 1
             % element) returns empty;
-            diffs=diff(sort([obj.m_tkDataT;obj.m_tkEventsT]));
+            diffs=diff(obj.getAllTimeValues());
             mint=[];
             if(isempty(diffs))
                 return;
@@ -175,66 +156,70 @@ classdef TimedDataStream < TimeKeeper
                t=obj.m_tkStreamT;
                return;
             end
-               
-            if(~isempty(obj.m_tkDataT))
-                rawT=obj.m_tkDataT;
-                rawData=obj.m_tkData;
-                if(rawT(1)>0)
-                    rawT=[0;rawT];
-                    sdata=size(rawData);
-                    rawData=[zeros(1,sdata(2));rawData];
-                end
-                durations=[diff(rawT);0];      
-            else
-                rawT=[];
-                durations=[];
-                rawData=[];
-            end
             
-            % checks for empties.
-            areValuesSet=false;
-            if(isempty(obj.m_tkDataT) && isempty(obj.m_tkEventsT))
-                t=[];
-                strm={};
-                areValuesSet=true;
-            elseif(isempty(rawT))
-                t=obj.m_tkEventsT;
-                strm=obj.m_tkEvents;
-                areValuesSet=true;
-            elseif(isempty(obj.m_tkEventsT))
-                t=0;
-                strm={[durations,rawData]};
-                areValuesSet=true;
-            end
-            if(areValuesSet)
-                obj.m_tkStream=strm;
-                obj.m_tkStreamT=t;
-                obj.m_tkIsValid=true;
+            % getting all combined data values and t values.
+            ct=obj.getAllTimeValues();
+            lt=length(ct);
+            
+            % check for no data.
+            if(lt==0)
+                if(isempty(obj.m_tkEvents))
+                    strm={};
+                    t=[];
+                else
+                    t=obj.m_tkEvents.t;
+                    strm=obj.m_tkEvents;
+                end
                 return;
             end
             
-            % checkinf for missing data values for event times.
-            % need to remake the data by doing inserts.
-            % first make the new data sets.
-            [rawT,rawData]=TimedDataStream.f_sInsertNewTimes(obj.m_tkEventsT,...
-                rawT,rawData,true);
+            cdata=zeros(lt,length(obj.m_tkData));
+            for i=1:length(obj.m_tkData)
+                di=obj.m_tkData{i};
+                if(~isstruct(di))
+                    continue;
+                end
+                
+                if(~iscolumn(di.data))
+                    di.data=di.data';
+                end
+                
+                [~,did]=TimedDataStream.f_sInsertNewTimes(ct,di.t,di.data,...
+                    obj.PersistValuesWhenInsertingTimes);
+                cdata(:,i)=did;
+            end
             
-            %redo the durations (since we have new ones).
-            durations=[diff(rawT);0];
+            if(ct(1)>0)
+                % add the zero time.
+                lt=lt+1;
+                ct=[0;ct];
+                cdata=[zeros(size(cdata(1,:)));cdata];
+            end  
             
-            % find intersection of data.
-            dlen=length(rawT);
-            if(dlen>1)
-                itcIdxs=interp1(rawT,1:dlen,...
-                    obj.m_tkEventsT,'previous','extrap');
+            durations=[diff(ct);0]; % last duration is always zero.
+            
+            % removing duplocates.
+            [ct,idxs]=unique(ct,'last');
+            durations=durations(idxs);
+
+            
+            % check if there are not events to consider.
+            if(isempty(obj.m_tkEvents))
+                strm={[durations,cdata]};
+                t=0;
+                return;
+            end
+            
+            % finding the event locations.
+            if(lt>1)
+                itcIdxs=interp1(ct,1:lt,...
+                    obj.m_tkEvents.t,'previous','extrap');
+                itcIdxs(isnan(itcIdxs))=0;
             else
                 itcIdxs=1;
             end
             
-            if(any(isnan(itcIdxs)))
-                error('Error while processing stream. Event t not found.');
-            end
-            
+            % creating the stream.
             % searching for all indexs.
             strm={};
             t=[];
@@ -242,38 +227,63 @@ classdef TimedDataStream < TimeKeeper
             lastT=0;
             for i=1:length(itcIdxs)
                 idx=itcIdxs(i);
+                % the data index.
                 didx=idx-1;
-
                 % appending the event.
                 if(didx>=curDataIndex)
                     % data vectors (durations).
                     ti=durations(curDataIndex:didx);
-                    bi=rawData(curDataIndex:didx,:);
+                    bi=cdata(curDataIndex:didx,:);
                     strm{end+1}=[ti,bi];
                     % start position.
-                    t(end+1)=rawT(curDataIndex);
+                    t(end+1)=ct(curDataIndex);
                     curDataIndex=didx+1;
                 end
                 
-                strm{end+1}=obj.m_tkEvents{i};
-                t(end+1)=obj.m_tkEventsT(i);                
-                                
+                strm{end+1}=obj.m_tkEvents.events{i};
+                t(end+1)=obj.m_tkEvents.t(i);                
             end
             
-            if(curDataIndex<=dlen)
+            if(curDataIndex<=lt)
                 % data vectors (durations).
                 ti=durations(curDataIndex:end);
-                bi=rawData(curDataIndex:end,:);
+                bi=cdata(curDataIndex:end,:);
                 strm{end+1}=[ti,bi];
                 % start position.
-                t(end+1)=rawT(curDataIndex);
+                t(end+1)=ct(curDataIndex);
             end
             
             t=t';
             strm=strm';
-            obj.m_tkStream=strm;
-            obj.m_tkStreamT=t;
-            obj.m_tkIsValid=true;
+        end
+    end
+    
+    methods (Access = private)
+        
+        function setChannelTimedData(obj,c,t,data)
+            % adds data to the sepcific channel.
+            if(length(obj.m_tkData)<c || ~isstruct(obj.m_tkData{c}))
+                obj.m_tkData{c}=struct('t',t,'data',data);
+            else
+                ct=obj.m_tkData{c}.t;
+                cdata=obj.m_tkData{c}.data;
+                
+                [ct,cdata]=TimedDataStream.f_sInsertNewTimes(t,ct,cdata,...
+                    obj.PersistValuesWhenInsertingTimes);
+                
+                if(length(ct)~=length(cdata))
+                    error('Error when inserting new times, time vector imbalance.');
+                end
+                if(length(ct)==1)
+                    nidxs=1;
+                else
+                    nidxs=interp1(ct,1:length(ct),t,'previous','extrap');
+                end
+                
+                cdata(nidxs)=data;
+                obj.m_tkData{c}.t=ct;
+                obj.m_tkData{c}.data=cdata;
+            end
         end
     end
     
@@ -286,15 +296,32 @@ classdef TimedDataStream < TimeKeeper
             
             % need to remake the data by doing inserts.
             % first make the new data sets.
-            sdata=size(data);
             missingt=setdiff(newT,t);
+            
+            % nothing needed?
+            if(isempty(missingt))
+                return;
+            end
+            
+            % finding missing t's that are before the minimal t.
+            beforeMint=missingt(missingt<min(t));
+            if(~isempty(beforeMint))
+                % need to put zeros on that.
+                missingt=missingt(missingt>=min(t));
+                t=[beforeMint;t];
+                data=[zeros(length(beforeMint),1);data];
+            end
+            
             % the new times.
             ct=[t;missingt];
-            % the new data.
-            cdata=zeros(length(ct),sdata(2));
             
-            % copy old data;
-            cdata(1:length(t),1:sdata(2))=data;
+            if(~isempty(data))
+                sdata=size(data);
+                % the new data.
+                cdata=zeros(length(ct),sdata(2));
+                % copy old data;
+                cdata(1:length(t),1:sdata(2))=data;
+            end
             
             % interpolating time positions to extend the data.
             if(persistOld && ~isempty(t))
@@ -313,10 +340,10 @@ classdef TimedDataStream < TimeKeeper
             
             % sorting the new data.
             [ct,idxs]=sort(ct);
-            cdata=cdata(idxs,:);
-            
             t=ct;
-            data=cdata;
+            if(~isempty(data))
+                data=cdata(idxs,:);
+            end
         end
     end
 end

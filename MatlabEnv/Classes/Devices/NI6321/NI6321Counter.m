@@ -2,10 +2,15 @@ classdef NI6321Counter < NI6321Core & TimedMeasurementReader
     %NI6321COUNTER Summary of this class goes here
     %   Detailed explanation goes here
     
+    methods
+        function obj=NI6321Counter(varargin)
+            obj@NI6321Core(varargin{:});
+            parseAndAssignFromVarargin(obj,{'ctrName'},varargin);
+        end
+    end
+    
     properties
         ctrName='ctr0'; % the counter channel.
-        %niCounterChannel=[];
-        %niCounterTimebase=[];
     end
         
     properties
@@ -20,11 +25,6 @@ classdef NI6321Counter < NI6321Core & TimedMeasurementReader
     end
     
     methods
-        % constructor, and send info to parent.
-        function obj = NI6321Counter(varargin)
-            obj=obj@NI6321Core(varargin);
-        end
-        
         function ResetCounter(obj)
             if(~isempty(obj.niSession))
                 obj.niSession.resetCounters();
@@ -45,14 +45,15 @@ classdef NI6321Counter < NI6321Core & TimedMeasurementReader
             else
                 data=diff([obj.lastDataValue;data]);
             end
+            
             obj.lastDataValue=loval;
             
             % convert data to timed units.
             if(obj.UseTimedDataUnits)
                 cntToTimedUnits=1/(obj.Rate*obj.timeUnitsToSecond);
                 data=data/cntToTimedUnits;
-            end  
-        end 
+            end
+        end
     end
    
     % device methods

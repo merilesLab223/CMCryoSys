@@ -22,6 +22,10 @@ classdef SpinCoreBase < Device & TimeBasedObject
         
         % the minimal clock cycles for each device instruction.
         MinInstructionClockTicks=5;
+        
+        % long delay min time (in timebase). the time where the instruction is split into
+        % a long delay instruction. See SpinCore API for help.
+        LongDelayMinTime = 60*60*1000; % an hour        
     end
     
     % property getters
@@ -60,18 +64,7 @@ classdef SpinCoreBase < Device & TimeBasedObject
                     'larger then ',num2str(obj.MinimalInstructionTime),'[s]']);
             end
         end
-        
-        function [idx]=Instruct(obj,flags,type,data,t)
-            if(~exist('data','var'))data=0;end
-            if(~exist('t','var'))
-                t=obj.MinimalInstructionTime;
-            else
-                t=obj.validateInstructionTime(t);
-            end
-            idx=obj.CoreAPI.InstructionsCount;
-            obj.CoreAPI.Instruct(flags,type,data,t);
-        end
-        
+
         function []=StartInstructions(obj)
             api=obj.CoreAPI;
             api.SetClock(obj.Rate);
@@ -127,6 +120,95 @@ classdef SpinCoreBase < Device & TimeBasedObject
                 cflags(i)=bi2de(bi);
             end
         end
+        
+        function SetOutput(obj,c,bit,doRun)
+            if(~exist('doRun','var'))
+                doRun=1;
+            end
+            % sets the current output for the devices. Uses last bits
+            % written to determine the current bits.
+            obj.stop();
+            obj.CoreAPI.Reset();
+            
+            obj.StartInstructions();
+            obj.InstructBinary(c,bit,obj.secondsToTimebase(1)*60*60);
+            obj.EndInstructions();
+            
+            obj.CoreAPI.Reset();
+            
+            if(doRun)
+                obj.CoreAPI.Start();
+            end
+        end  
+        
+        function InstructDelay(obj,dur)
+            % delay is just an isntruction with current bits.
+            obj.InstructBinary([],[],dur);
+        end
+        
+        function [idx]=InstructStartLoop(obj,n)
+            idx=obj.Instruct(0,obj.CoreAPI.INST_LOOP,n);
+        end
+        
+        function InstructEndLoop(obj,idx)
+            obj.Instruct(0,obj.CoreAPI.INST_END_LOOP,idx);
+        end 
+        
+        function InstructBinary(obj,chans,val,dur)
+            
+            minIT=obj.MinimalInstructionTime/obj.timeUnitsToSecond;
+            
+            if(~exist('dur','var') || dur<minIT)
+                dur=minIT;
+            end
+            
+            if(length(chans)>1 && length(val)==1)
+                val=ones(size(chans))*bits;
+            end
+            
+            % instructing and delay if needed.
+            bits=obj.m_lastInstructBits;
+            if(~isempty(chans))
+                bits(chans)=val;
+            end
+            flags=bi2de(bits);
+            obj.m_lastInstructBits=bits;
+            
+            if(dur>obj.LongDelayMinTime)
+                % case where we need a long delay.
+                ldn=floor(dur/obj.LongDelayMinTime);
+                dur=rem(dur,obj.LongDelayMinTime);
+
+                % sending instruction.
+                obj.Instruct(flags,obj.CoreAPI.INST_LONG_DELAY,ldn,obj.LongDelayMinTime);
+                if(dur>=minIT)
+                    obj.Instruct(flags,obj.CoreAPI.INST_CONTINUE,0,dur);
+                end
+            else
+                % send nbormal commands.
+                obj.Instruct(flags,obj.CoreAPI.INST_CONTINUE,0,dur);
+            end
+        end          
+    end
+    
+    
+    properties(Access = private)
+        m_lastInstructBits=zeros(1,32);
+    end
+    
+    % protected helpers
+    methods(Access = protected)
+        
+        function [idx]=Instruct(obj,flags,type,data,t)
+            if(~exist('data','var'))data=0;end
+            if(~exist('t','var'))
+                t=obj.MinimalInstructionTime;
+            else
+                t=obj.validateInstructionTime(t);
+            end
+            idx=obj.CoreAPI.InstructionsCount;
+            obj.CoreAPI.Instruct(flags,type,data,t);
+        end     
     end
     
     % core api static getters and setters

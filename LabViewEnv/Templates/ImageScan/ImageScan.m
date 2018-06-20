@@ -5,57 +5,166 @@ classdef ImageScan < Experiment
     % properits collection to be copied to matlab.
     % together with events this will provide the main data collection.
     
-    % UI Properties
-    % Some of these are copied to labview.
+    % Property collections for the image scanner.
     properties
+        % Current position info.
         Position=[];
-        ScanConfig=struct();
-        SystemConfig=struct('UseAnalogInputA0',true);
+        % The scan configuration. parameters shared to all scans.
+        ScanConfig=[];
+        % System general configuration.
+        SystemConfig=[];
+        % The positioner configuration. parameters shared to all positions.
         PositionConfig=[];
-        ScanParameters=struct();
-        StreamConfig=struct('ClockRate',5000,'AutoAdjustRates',true,...
-            'IntegrationTime',1,'UpdateTime',50,'CollectionWindow',5000,...
-            'PadWithZeros',true);
-        StreamTrace=[]; % A value to update.
-        ScanImage=[];
-        IsStreamingReader=[];
-        ReaderAmplitude=0;
-        PositionTracking=false;
-        ScanProgress=0;
-        ImageProperties=struct();
-        StreamStorageFile='';
-        IsSavingStreamToFile=false;
+        % The current scan paramters.
+        ScanParameters=[];
+        % The current stream parameters.
+        StreamConfig=[];
     end
     
-    % privately set properties.
-    % will not be copied to Labview.
+    % Read only property collections
     properties(SetAccess = protected)
-        ScanDataCollector=[];
-        StreamDataCollector=[];
-        HasBeenInitialized=false;
-        IsWorking=false;
-        StatusFlags=struct();
-        DisplayInfo=struct();
+        % The last scanned/loaded image properties.
+        ImageProperties=struct(); 
+        % Information about temp files and loaded file.
+        FileInfo=struct();
     end
     
-    % internal properties, to be used with other parameters.
+    % Indicators.
+    properties
+        % The last stream trace collected.
+        StreamTrace=[]; 
+        % A mterix representing the last scan image.
+        ScanImage=[]; 
+        % If true, then updates the current state of the stream reading.
+        IsStreamingReader=false;
+        % Mean indication of the last read reader avg amplitude. 
+        ReaderAmplitude=0;
+        % If true when the position value changes then the position is 
+        % automatically set to the output positioner.
+        PositionTracking=false;
+        % The scan progress in precentage.
+        ScanProgress=0;
+        % True if currently saving the stream to file.
+        IsSavingStreamToFile=false;
+        % True if currently the RF channel is set top open(up,1)
+        IsRFChanOpen=false;
+        % True if currently the Laser channel is set top open(up,1)
+        IsLaserChanOpen=false;
+    end
+    
+    % Read only indicators.
+    properties(SetAccess = protected)
+        % if true the image scan has been initialized.
+        HasBeenInitialized=false;
+        % if true then currenly working (scanning, initializing etc..).
+        IsWorking=false;
+        % helper status flag collection (can be any flag).
+        StatusFlags=struct();
+    end
+    
+    % Stream operation values
+    properties
+        StreamStorageFile='';   
+    end
+    
+    % Helper classes
+    properties(SetAccess = protected)
+        % the data collector to be used when scanning.
+        ScanDataCollector=[];
+        % the data collector to be used to for the stream.
+        StreamDataCollector=[];
+    end
+    
+    properties(Access = private)
+        m_ScanDataCollector=[];
+        m_StreamDataCollector=[];
+    end
+    
+    % Helper classes getters and setters.
+    methods
+        function [col]=get.StreamDataCollector(exp)
+            % returns the stream data colletctor.
+            if(isempty(exp.m_StreamDataCollector))
+                exp.m_StreamDataCollector=StreamCollector(exp.Reader);
+                exp.m_StreamDataCollector.addlistener('DataReady',@exp.OnStreamDataReady);
+            end
+            col=exp.m_StreamDataCollector;
+        end
+        function [col]=get.ScanDataCollector(exp)
+            % returns the scan data colletctor.
+            if(isempty(exp.m_ScanDataCollector))
+                exp.m_ScanDataCollector=TimeBinCollector(exp.Reader);
+                exp.m_ScanDataCollector.addlistener('BinComplete',@exp.OnScanDataBinComplete);
+                exp.m_ScanDataCollector.addlistener('Complete',@exp.OnScanDataComplete);
+            end
+            col=exp.m_ScanDataCollector;
+        end        
+    end
+    
+    % Devices
+    properties(SetAccess = private)
+        Pos;
+        Gate;
+        Reader;
+        Clock;
+    end
+        
+    % Devices (Getters and initializers)
+    methods
+        % returns the poisitioer.
+        function [dev]=get.Pos(exp)
+            dev=exp.Devices.getOrCreate('NI6321Positioner2D',...
+                'xchan','ao0','ychan','ao1','niDevID','Dev1');
+        end
+        
+        function [dev]=get.Gate(exp)
+            if(~isfield(exp.SystemConfig,'UseInternalClock') ||...
+                    ~exp.SystemConfig.UseInternalClock)
+                dev=exp.Clock;
+                return;
+            end
+            dev=exp.Devices.getOrCreate('SpinCoreClock');
+        end
+        
+        % get the exp.Clock.
+        function [dev]=get.Clock(exp)
+            dev=exp.Devices.getOrCreate('SpinCoreClock');
+        end
+        
+        function [dev]=get.Reader(exp)
+            %returns the reader device.
+            if(isfield(exp.SystemConfig,'UseAnalogInputA0') &&...
+                exp.SystemConfig.UseAnalogInputA0)
+                % as analog.
+                dev=exp.Devices.getOrCreate('NI6321AnalogReader',...
+                    'readchan','ai0','niDevID','Dev1');
+            else
+                dev=exp.Devices.getOrCreate('NI6321Counter',...
+                    'ctrName','ctr0','niDevID','Dev1');   
+            end
+        end
+    end
+
+    % internal properties, to be used with other properties getters and setters.
     properties (Access = private)
         m_has_been_initialzied=false;
         m_is_working=false;
         m_pos_value=struct('X',0,'Y',0);
         m_position_config=struct();
         m_lastUpdateLoopUIUpdate=-1;
+        m_isRFChanOpen=true;
+        m_isLaserChanOpen=true;
     end
 
     % Getters and setters (advanced property handling).
     methods
-        % get the current position value.
         function [rt]=get.PositionConfig(exp)
+            % get the current position value.
             rt=exp.m_position_config;
         end
         
-        % set the current position value.
         function set.PositionConfig(exp,v)
+            % set the current position value. Updates the device.
             if(~exist('v','var'))
                 v=struct();
             end
@@ -65,51 +174,50 @@ classdef ImageScan < Experiment
             end
         end
         
-        % get the current position value.
         function [rt]=get.Position(exp)
+            % get the current position value.
             rt=exp.m_pos_value;
         end
         
-        % set the current position value.
         function set.Position(exp,v)
+            % set the current position value. If PositionTracking, then
+            % sends the position to the device.
             if(~exist('v','var'))
                 v=struct('X',0,'Y',0);
             end
             exp.m_pos_value=v; % to allow auto update.
             if(exp.PositionTracking)
-                exp.sendPositionToDevice();
+                exp.updatePosition();
             end
         end
         
-        % stream state getter.
         function [rt]=get.IsStreamingReader(exp)
-            rt=false;
-            if(isstruct(exp.StatusFlags) && isfield(exp.StatusFlags,'IsStreaming'))
-                rt=exp.StatusFlags.IsStreaming; 
-            end
+            % If true then we are currently streaming.
+            rt=getFieldOrDefault(exp.StatusFlags,'IsStreaming',false);
         end
         
-        % stream state setter
+        
         function set.IsStreamingReader(exp,isStreaming)
+            % Sets the current stream states and updates the output
+            % for the stream, clocks and gates (if changed).
             if(~exist('isStreaming','var'))
                 isStreaming=false;
             end
-            if(isStreaming)
-                disp('Starting stream..');
-            else
-                disp('Stopping stream..');
+            if(exp.IsStreamingReader==isStreaming)
+                return;
             end
-            exp.doStream(isStreaming);
+            exp.StatusFlags.IsStreaming=isStreaming;
+            exp.updateStreamAndGates();
             exp.update('IsStreamingReader');
         end
         
-        % get the current operational state.
         function [rt]=get.HasBeenInitialized(exp)
+            % get the current operational state.
             rt=exp.m_has_been_initialzied;
         end
         
-        % set the current operational state.
         function set.HasBeenInitialized(exp,v)
+             % set the current operational state.
             if(~exist('v','var'))
                 v=false;
             end
@@ -117,13 +225,13 @@ classdef ImageScan < Experiment
             exp.update('HasBeenInitialized');
         end          
         
-        % get the current operational state.
         function [rt]=get.IsWorking(exp)
+            % True if working. (Initializing, scanning etc...
             rt=exp.m_is_working;
         end
         
-        % set the current operational state.
         function set.IsWorking(exp,v)
+            % set the current working state.
             if(~exist('v','var'))
                 v=false;
             end
@@ -132,10 +240,48 @@ classdef ImageScan < Experiment
         end    
 
         function set.IsSavingStreamToFile(exp,v)
+            % if true, tells that the current stream is being saved to
+            % file.
             exp.IsSavingStreamToFile=v;
             if(v~=true)
                 exp.StreamStorageFile='';
             end
+        end
+        
+        function set.IsRFChanOpen(exp,val)
+            % if true, then sets the current RF channel to open (rf switch
+            % open).
+            if(exp.m_isRFChanOpen==val)
+                return;
+            end
+            exp.m_isRFChanOpen=val;
+            if(~isempty(exp.Gate))
+                exp.updateStreamAndGates();
+            end
+        end
+        
+        function [rt]=get.IsRFChanOpen(exp)
+            % if true, then the current RF channel to open (rf switch
+            % open).            
+            rt=exp.m_isRFChanOpen;
+        end
+        
+        function set.IsLaserChanOpen(exp,val)
+            % if true, then the current Laser channel to open (laser switch
+            % open).              
+            if(exp.m_isLaserChanOpen==val)
+                return;
+            end
+            exp.m_isLaserChanOpen=val;
+            if(~isempty(exp.Gate))
+                exp.updateStreamAndGates();
+            end
+        end
+        
+        function [rt]=get.IsLaserChanOpen(exp)
+            % if true, then the current Laser channel to open (laser switch
+            % open).               
+            rt=exp.m_isLaserChanOpen;
         end
     end
     
@@ -148,29 +294,48 @@ classdef ImageScan < Experiment
     % Positioner methods
     methods
         function setPosition(exp,x,y)
+            % set the current position and update the device.
             exp.Position.X=x;
             exp.Position.Y=y;
             %exp.update('Position');
-            exp.sendPositionToDevice(false);
+            exp.updatePosition(false);
         end
         
-        function sendPositionToDevice(exp,delayed)
+        function updatePosition(exp,delayed)
+            % send the current position to device. (Update the position)
             if(~exist('delayed','var') || ~isnumeric(delayed))
                 delayed=1;
             end
             
             if(delayed==0)
-                exp.inv_sendPositionToDevice();
+                exp.inv_updatePosition();
             end
             if(isempty(exp.m_positionInvokeUpdateEventDispatch))
                 exp.m_positionInvokeUpdateEventDispatch=events.CSDelayedEventDispatch();
                 addlistener(exp.m_positionInvokeUpdateEventDispatch,'Ready',...
-                    @exp.inv_sendPositionToDevice);
+                    @exp.inv_updatePosition);
             end
             exp.m_positionInvokeUpdateEventDispatch.trigger(delayed);            
         end
+
+        function updatePositionConfig(exp)
+            % call to update the position config into the device.
+            if(~isfield(exp.PositionConfig,'UnitsToVolts')||...
+               ~isfield(exp.PositionConfig,'XToYRatio'))
+                return;
+            end            
+            scale=[exp.PositionConfig.UnitsToVolts*exp.PositionConfig.XToYRatio,...
+                exp.PositionConfig.UnitsToVolts];
+            
+            exp.Pos.InvertXY=exp.PositionConfig.InvertXY;
+            exp.Pos.PositionTOVoltageUnits=scale;
+        end
         
-        function inv_sendPositionToDevice(exp,s,e)
+    end
+    
+    methods (Access = private)
+        function inv_updatePosition(exp,s,e)
+            % call to update the position.
             if(exp.StatusFlags.IsScanning || exp.StatusFlags.IsSettingPosition)
                 % cannot change position while scanning.
                 exp.m_positionUpdateCalledWhileUpdatingPosition=true;
@@ -204,33 +369,38 @@ classdef ImageScan < Experiment
             
             % redo if needed.
             if(exp.m_positionUpdateCalledWhileUpdatingPosition)
-                exp.sendPositionToDevice();
+                exp.updatePosition();
+            end
+        end        
+    end
+    
+    % stream, status and gate methods
+    methods
+        function updateStreamAndGates(exp)
+            % call to update the current state of the action flags
+            % i.e. Stream, Laser, RF.
+            if(~exp.IsStreamingReader)
+                exp.stop();
+            end
+            exp.updateClockFlags(~exp.IsStreamingReader);
+            if(exp.IsStreamingReader)
+                exp.doStream(true);
             end
         end
         
-        function updatePositionConfig(exp)
-            if(~isfield(exp.PositionConfig,'UnitsToVolts')||...
-               ~isfield(exp.PositionConfig,'XToYRatio'))
-                return;
-            end            
-            scale=[exp.PositionConfig.UnitsToVolts*exp.PositionConfig.XToYRatio,...
-                exp.PositionConfig.UnitsToVolts];
-            
-            exp.Pos.InvertXY=exp.PositionConfig.InvertXY;
-            exp.Pos.PositionTOVoltageUnits=scale;
+        function updateClockFlags(exp,sendToDevice)
+            exp.Clock.SetOutput([3,4],[exp.IsRFChanOpen,exp.IsRFChanOpen]...
+                ,sendToDevice);            
         end
-        
     end
     
     % public methods.
     methods
-        % initializes the experiment devices.
         function init(exp)
+            % initializes the experiment.
+            
             exp.resetStatusFlags();
             exp.IsWorking=true;
-            
-            % main device configurations.
-            exp.initDevices('Dev1');
             
             % updating device configs.
             exp.updatePositionConfig();
@@ -243,16 +413,20 @@ classdef ImageScan < Experiment
             
             % set is working.
             exp.IsWorking=false;
+            
+            % update the rf channels if needed.
+            exp.IsRFChanOpen=exp.IsRFChanOpen;
+            exp.IsLaserChanOpen=exp.IsLaserChanOpen;
         end
-        
-        % call to scan.
+
         function scan(exp)
+            % Start the scan with current configuration.
             exp.doScan();
         end
         
-        % call to stream.
         function stream(exp)
-            exp.doStream(true);
+            % Set the stream to true and start streaming.
+            exp.IsStreamingReader=true;
         end
         
         function stop(exp)
@@ -260,9 +434,9 @@ classdef ImageScan < Experiment
             exp.stopAllDevices();            
         end
         
-        % call to load an image as the graph data.
-        % any image format that is allowed by matlab imread.
         function LoadImage(exp,fpath)
+            % call to load an image as the graph data.
+            % any image format that is allowed by matlab imread.            
             img=imread(fpath);
             if(length(size(img))==3)
                 img=rgb2gray(img)';
@@ -272,10 +446,10 @@ classdef ImageScan < Experiment
             
             simg=size(img);
             exp.setScanImage(img,[0,0,simg(1),simg(2)],true);         
-            
         end
         
         function SaveScanToImage(exp,fpath,saveMatFile)
+            % save the current scan result to an image.
             if(~exist('saveMatFile','var') || ~islogical(saveMatFile))
                 saveMatFile=true;
             end
@@ -294,6 +468,7 @@ classdef ImageScan < Experiment
         end
         
         function SetStreamSaveFile(exp,fpath)
+            % Starts saving the stream to file.
             [~,~,ext]=fileparts(fpath);
             if(~strcmp(ext,'.mat'))
                 fpath=[fpath,'.mat'];
@@ -362,128 +537,25 @@ classdef ImageScan < Experiment
                 'IsSettingPosition',false,...
                 'PossibleLossOfData',false...
                 );            
-        end        
+        end
     end
     
     % devics get properties
-    properties (SetAccess = protected)
-        Pos=[];
-        Clock=[];
-        Reader=[];
-        ScanDevices=[];
-        
-    end
-    
     % device private values
     properties(Access = private)
-        dev_posDevName='ni_analog_pos';
-        dev_analogReaderDevName='ni_analog_reader';
-        dev_countReaderDevName='ni_counter_reader';
-        dev_niClock='ni_clock';
-        dev_pbClock='pb_clock';
         m_stopDevicesEvDispatch=[];
     end
-    
-    % devices getters and setters
-    methods
-        % returns the poisitioer.
-        function [dev]=get.Pos(exp)
-            dev=exp.Devices.get(exp.dev_posDevName);
-        end
-        
-        % get the exp.Clock.
-        function [dev]=get.Clock(exp)
-            if(isfield(exp.SystemConfig,'UseInternalClock') &&...
-                    exp.SystemConfig.UseInternalClock)
-                dev=exp.Devices.get(exp.dev_niClock);
-            else
-                dev=exp.Devices.get(exp.dev_pbClock);
-            end
-        end
-        
-        % get the reader.
-        function [dev]=get.Reader(exp)
-            if(isfield(exp.SystemConfig,'UseAnalogInputA0') &&...
-                    exp.SystemConfig.UseAnalogInputA0)
-                dev=exp.Devices.get(exp.dev_analogReaderDevName);
-            else
-                dev=exp.Devices.get(exp.dev_countReaderDevName);
-            end
-        end
-        
-        function [devList]=get.ScanDevices(exp)
-            devList=exp.Devices.get({...
-                exp.dev_analogReaderDevName,...
-                exp.dev_countReaderDevName,...
-                exp.dev_niClock,...
-                exp.dev_pbClock,...
-                exp.dev_posDevName});
-        end
-    end
 
-    % Device methods
+    % Device protected methods
     methods (Access = protected)
-        function initDevices(exp,niDevName)
-            if(~exist('niDevName','var'))
-                niDevName=[];
-            end
-
-            % Hardware connections.
-            % port0/line1 ->USER1 ->PFI0 : Trigger.
-            % pfi15->pfi14 : Clock loopback.
-            % pfi8 (counter 0)->User2 : counter input)
-            
-            % devices:
-%           dev_posDevName='ni_analog_pos';
-%           dev_analogReaderDevName='ni_analog_reader';
-%           dev_countReaderDevName='ni_counter_reader';
-%           dev_niClock='ni_clock';
-%           dev_pbClock='pb_clock';
-
-            % configuring analog poisitioner.
-            if(~exp.Devices.contains(exp.dev_posDevName))
-                dev=NI6321Positioner2D(niDevName);
-                exp.Devices.set(exp.dev_posDevName,dev);
-                dev.xchan='ao0';
-                dev.ychan='ao1';
-            end
-            
-            % configuring analog reader.
-            if(~exp.Devices.contains(exp.dev_analogReaderDevName))
-                dev=NI6321AnalogReader(niDevName);
-                exp.Devices.set(exp.dev_analogReaderDevName,dev);
-                dev.readchan='ai0';
-            end
-            
-            % configuring counter reader.
-            if(~exp.Devices.contains(exp.dev_countReaderDevName))
-                dev=NI6321Counter(niDevName);
-                exp.Devices.set(exp.dev_countReaderDevName,dev);
-                dev.ctrName='ctr0';
-            end
-            
-            % configuring internal clock (ni).
-            if(~exp.Devices.contains(exp.dev_niClock))
-                dev=NI6321Clock(niDevName);
-                exp.Devices.set(exp.dev_niClock,dev);
-                dev.ctrName='ctr3';
-            end
-            
-            % configuring pb clock.
-            if(~exp.Devices.contains(exp.dev_pbClock))
-                dev=SpinCoreClock();
-                exp.Devices.set(exp.dev_pbClock,dev);
-                %dev.setClockRate(300e6);
-            end
-        end
-
-        % async call to stop all devices.
         function doAsyncStopAllDevices(exp,s,e)
+            % async call to stop all devices.
             exp.stopAllDevices(false);
         end
         
-        % call to stop all devices.
         function stopAllDevices(exp,async)
+            % call to stop all devices.
+            
             % first stop the clock right away.
             if(exist('async','var') && async>0)
                 if(isempty(exp.m_stopDevicesEvDispatch))
@@ -500,31 +572,11 @@ classdef ImageScan < Experiment
             exp.Clock.stop();
             exp.Pos.stop();
             exp.Reader.stop();
-            
-            %disp('Stopped devices.');
+            exp.StreamDataCollector.stop();
+            exp.ScanDataCollector.stop();
             exp.resetStatusFlags();
-
-            if(isa(exp.StreamDataCollector,'StreamCollector'))
-                exp.StreamDataCollector.stop();
-            end
-            
-            exp.deleteCollectors();
-            
             exp.IsWorking=false;
             exp.update('StatusFlags');
-        end 
-        
-        function deleteCollectors(exp)
-            if(isa(exp.StreamDataCollector,'StreamCollector'))
-                exp.StreamDataCollector.stop();
-            end
-            
-            if(isa(exp.StreamDataCollector,'TimedDataCollector'))
-                exp.StreamDataCollector.stop();
-            end
-            
-            exp.StreamDataCollector=[];
-            exp.ScanDataCollector=[];            
         end
     end
     
@@ -622,14 +674,12 @@ classdef ImageScan < Experiment
         end
         
         function ConfigureStreamDataCollector(exp,clockrate)
-            exp.StreamDataCollector=StreamCollector(exp.Reader);
-            %exp.StreamDataCollector.IntegrateDT=exp.StreamConfig.IntegrationTime;
+            % configuring options.
             exp.StreamDataCollector.UpdateDT=exp.StreamConfig.UpdateTime;
             exp.StreamDataCollector.CollectDT=exp.StreamConfig.CollectionWindow;
             exp.StreamDataCollector.PadZeros=exp.StreamConfig.PadWithZeros;
             
             % adding callback.
-            exp.StreamDataCollector.addlistener('DataReady',@exp.OnStreamDataReady);
             exp.StreamDataCollector.setClockRate(clockrate);            
         end
         
@@ -664,7 +714,6 @@ classdef ImageScan < Experiment
                 end
 
                 delete(mf);
-                %save(exp.StreamStorageFile,'strm','-append');
             end
         end
     end
@@ -681,6 +730,7 @@ classdef ImageScan < Experiment
         function doScan(exp)
             % first stop all devices.
             exp.stopAllDevices();
+            exp.updateClockFlags(false);
             
             % call to configure (if needed, internal to configure).
             exp.Clock.configure();
@@ -738,7 +788,7 @@ classdef ImageScan < Experiment
             end
             
             exp.updateTempFileList();
-            exp.DisplayInfo.DisplayedFile=tmpname;
+            exp.FileInfo.DisplayedFile=tmpname;
             
             % clock rates and configurations.
             % calculated by the position clock rate(niquist);
@@ -841,7 +891,7 @@ classdef ImageScan < Experiment
             end
             maxchunk=round(maxchunk);
 
-            exp.ScanDataCollector=TimeBinCollector(exp.Reader);
+            exp.ScanDataCollector.clear();
             exp.ScanDataCollector.setClockRate(measureClockRate);
             exp.ScanDataCollector.addlistener('Complete',...
                 @exp.OnScanDataComplete);
@@ -850,14 +900,14 @@ classdef ImageScan < Experiment
                 @exp.OnScanDataBinComplete);
             end
             exp.ScanDataCollector.Measure(mtbins);
-            exp.ScanDataCollector.reset();
-            exp.StreamDataCollector.reset();
 
             %%%%%%%%%%%%%%%%%%%%%%%%%
             % prepare and run.
             
             % preparing the streaming reader chunk size.
             exp.Reader.SetMaxReadChunkSize(maxchunk);
+            exp.ScanDataCollector.reset();
+            exp.StreamDataCollector.reset();
             
             % updating flags.
             exp.StatusFlags.IsScanning=true;
@@ -899,7 +949,9 @@ classdef ImageScan < Experiment
             else
                 exp.stopAllDevices(false);
             end
-            exp.sendPositionToDevice(true);
+            exp.updatePosition(true);
+            exp.IsLaserChanOpen=exp.IsLaserChanOpen;
+            exp.IsRFChanOpen=exp.IsLaserChanOpen;
         end
         
         function OnScanDataBinComplete(exp,s,e)
@@ -983,7 +1035,7 @@ classdef ImageScan < Experiment
     % cleanup and debug
     methods
         function delete(exp)
-            exp.deleteCollectors();
+            exp.stop();
         end
         
         function debugStoreCurrentStateToDisk(exp,ignoreList)
@@ -992,41 +1044,6 @@ classdef ImageScan < Experiment
                     'Devices','ExpInfo','Clock','Pos','Reader'};
             end
             debugStoreCurrentStateToDisk@ExperimentCore(exp,ignoreList);
-        end
-    end
-    
-    % testing
-    methods
-        function tester(exp)
-            exp.OnStreamDataReady([],[]);
-        end
-        
-        function testLoop(exp)
-            exp.OnUpdateLoop();
-        end
-        
-        function testLoadRandomEye(exp,n,dt)
-            if(~exist('n','var'))
-                n=250;
-            end
-            if(~exist('dt','var'))
-                dt=0.1;
-            end
-            
-            exp.ImageProperties.Xn=n;
-            exp.ImageProperties.Yn=n;
-            exp.ImageProperties.X=0;
-            exp.ImageProperties.Y=0;
-            exp.ImageProperties.Width=n;
-            exp.ImageProperties.Height=n;
-            exp.ImageProperties.FromCenter=true;  
-            exp.update('ImageProperties');
-            while(true)
-                img=eye(n)+rand(n);
-                exp.setScanImage(uint16(img));
-                %exp.ScanImage=uint16(img);
-                pause(dt);
-            end
         end
     end
 end

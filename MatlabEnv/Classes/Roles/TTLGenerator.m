@@ -6,10 +6,13 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
     % Requires the abstract method compileSequence(obj,t,data)
     % ----------------------------------
     properties
-        defaultPulseWidth=0.1; % in ms.        
+        defaultPulseWidth=0.1; % in ms.   
         Channel=1;
         ReduceTTLloops=true;
         MaxReducedLoopLength=500;
+        % set to true if the TTL generator is to advance the times
+        % automatically. (On call to Pulse, Up, Down ... etc).
+        AutoAdvnceTimes=true;
     end
     
     properties(Constant)
@@ -24,7 +27,9 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
             % Sets the output bits, for durations dur, starting at
             % time obj.curT at channels chan.            
             obj.SetBitsAt(b,obj.curT,dur,chan);
-            obj.wait(sum(dur));
+            if(obj.AutoAdvnceTimes)
+                obj.wait(sum(dur));
+            end
         end
         
         function SetBitsAt(obj,b,t,dur,chan)
@@ -48,13 +53,17 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
             end
             
             % calculating times and appending last values.
-            t=t(1)+[0;cumsum(dur(2:end))];
-            
+            if(length(dur)==1)
+                t=t(1);
+            else
+                t=t(1)+[0;cumsum(dur(1:end-1))]; % last one dosent count..
+            end
+   
             % setting the timed data.
             obj.SetTimedData(t,b,chan);
         end
         
-        function Up(obj,dur,c)
+        function Up(obj,c)
             % Set the values to be up for period(s) dur.
             if(~exist('c','var') || isempty(c))
                 c=obj.Channel;
@@ -62,11 +71,10 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
             if(~exist('dur','var') || isempty(dur))
                 dur=obj.getTimebase();
             end
-            dur=[0;dur];
-            obj.SetBits(ones(size(dur)),dur,c);
+            obj.SetBitsAt(ones(size(dur)),obj.curT,0,c);
         end
         
-        function Down(obj,dur,c)
+        function Down(obj,c)
             % Set the values to be down for period(s) dur.
             if(~exist('c','var') || isempty(c))
                 c=obj.Channel;
@@ -74,8 +82,7 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
             if(~exist('dur','var') || isempty(dur))
                 dur=obj.getTimebase();
             end
-            dur=[0;dur];
-            obj.SetBits(zeros(size(dur)),dur,c);
+            obj.SetBitsAt(zeros(size(dur)),obj.curT,0,c);
         end
         
         function PulseAt(obj,t,durUp,c)
@@ -138,20 +145,40 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
             tup=obj.secondsToTimebase(1/freq);
             tdown=tup*(1-dutyCycle);
             tup=tup*dutyCycle;
-            n=ceil(dur/(tup+tdown));
+            n=floor(dur/(tup+tdown));
             
-            tup=ones(n,1)*tup;
-            tdown=ones(n,1)*tdown;
-            obj.Pulse(tup,tdown,c);
-        end
-        
-        
-        function [ttl,t]=getTTLVectors(obj,ignoreLoops)
-            if(~exist('ignoreLoops','var'))
-                ignoreLoops=false;
+            % finding rem.
+            remTime=dur-n*(tup+tdown);
+            
+            if(n>0)
+                tup=repmat(tup,n,1);
+                tdown=repmat(tdown,n,1);
+                obj.Pulse(tup,tdown,c);
             end
+            
+            if(remTime==0)
+                return;
+            end
+            if(remTime>tup)
+                obj.Pulse(tup,remTime-tup,c);
+            else
+                obj.Up(remTime,c);
+            end
+        end
+
+        function [ttl,t]=getTTLVectors(obj,loopTypeFilter)
+            if(~exist('loopTypeFilter','var'))
+                loopTypeFilter=[];
+            elseif(ischar(loopTypeFilter))
+                loopTypeFilter={loopTypeFilter};
+            elseif(islogical(loopTypeFilter) && ~loopTypeFilter)
+                loopTypeFilter={};
+            elseif(~iscell(loopTypeFilter))
+                loopTypeFilter=[];
+            end
+            
             [t,strm]=obj.getTimedStream();
-            [ttl,durs]=TTLGenerator.f_sStreamToTTLVectors(t,strm,ignoreLoops);
+            [ttl,durs]=TTLGenerator.f_sStreamToTTLVectors(t,strm,loopTypeFilter);
             if(isempty(durs))
                 t=[];
                 ttl=[];
@@ -160,8 +187,12 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
             t=[0;cumsum(durs(1:end-1))]; % covert durations to time.
         end
         
-        function [curT]=StartLoop(obj,n)
+        function [curT]=StartLoop(obj,n,ltype)
+            if(~exist('ltype','var'))
+                ltype='';
+            end
             li=obj.LOOPStartStruct;
+            li.looptype=ltype;
             li.n=n;
             obj.SetTimedEvent(obj.curT,li);
             curT=obj.curT;
@@ -174,7 +205,8 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
     end
     
     methods(Static, Access = protected)
-        function [ttl,durs]=f_sStreamToTTLVectors(st,strm,ignoreLoops)
+        function [ttl,durs]=f_sStreamToTTLVectors(st,strm,loopTypeFilter)
+            doLoopFiltering=iscell(loopTypeFilter);
             durs=[];
             ttl=[];
             idx=1;
@@ -191,9 +223,14 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
                         case 'loopstart'
                             eidx=TTLGenerator.f_sFindStreamLoopEnd(idx+1,strm);
                             [ittl,ldurs]=TTLGenerator.f_sStreamToTTLVectors(...
-                                st(idx+1:eidx-1),strm(idx+1:eidx-1),ignoreLoops);
+                                st(idx+1:eidx-1),strm(idx+1:eidx-1),loopTypeFilter);
                             
-                            if(~ignoreLoops)                                
+                            doLoop=true;
+                            if(doLoopFiltering)
+                                doLoop=isfield(si,'looptype') && ...
+                                    any(strcmp(si.looptype,loopTypeFilter));
+                            end
+                            if(doLoop)                               
                                 ittl=repmat(ittl,si.n,1);
                                 ldurs=repmat(ldurs,si.n,1);
                             end

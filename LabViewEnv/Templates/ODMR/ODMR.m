@@ -58,6 +58,8 @@ classdef ODMR<Experiment
         ScanProperties=[];
         ReaderProperties=[];
         GateDisplay={};
+        SystemConfig=[];
+        RFProperties=[];
     end
     
     properties(SetAccess = private)
@@ -74,7 +76,7 @@ classdef ODMR<Experiment
             exp.Gate.configure();
             exp.FGen.configure();
             
-            exp.MeasurementCollector=TimeBinCollector(exp.Reader);
+            exp.MeasurementCollector=StepBinCollector(exp.Reader);
             exp.MeasurementCollector.KeepResultsInMemory=false;
             % configure measurement reader.
             exp.MeasurementCollector.addlistener('BinComplete',@exp.binComplete);
@@ -88,20 +90,12 @@ classdef ODMR<Experiment
             
             % setting the function generator properties.
             fgen=exp.FGen;
-            mcol=exp.MeasurementCollector;
-            mcol.clear();
             gate=exp.Gate;
-            gate.Channel=[1,2];
-            mcol.clear();
-            gate.clear();
-            gate.ReduceTTLloops=false;
+    
+            exp.updateFunctionGeneratorProperties(false);
             
-            fgen.StartFrequency=exp.ScanProperties.Start*1e6;
-            fgen.EndFrequency=exp.ScanProperties.End*1e6;
-            fgen.NumberOFSweepPoints=exp.ScanProperties.N;
-            fgen.Amplitude=exp.ScanProperties.Amplitude;
-            fgen.TriggerSource='EXT';
-            
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            % clearing the scan results if needed.
             if(exp.Results.StartOffset~=exp.ScanProperties.Start||...
                 exp.Results.StepSize~=exp.ScanProperties.StepSize)
                 exp.Results.Freqs=[];
@@ -113,112 +107,30 @@ classdef ODMR<Experiment
             exp.Results.Freqs=...
                 exp.ScanProperties.Start:exp.ScanProperties.StepSize:exp.ScanProperties.End;
             
-            % calcilating the clock rate.
-            dt=exp.ScanProperties.Dwell;
-            fn=double(exp.ReaderProperties.BinsPerFreq*4);
-            crate=Inf;
-            
-            while(crate>exp.ReaderProperties.MaxFreq)
-                fn=fn/2;
-                crate=1/(exp.Reader.timebaseToSeconds(dt)/fn);
-                crate=floor(crate);
-                if(crate<=1)
-                    crate=1;
-                    break;
-                end
-            end
-            
-            % assing to reader/col.
-            
-            clockTerm='pfi0';
-            gate.setClockRate(300e6);
-            exp.Reader.setClockRate(crate);
-            exp.Reader.SetMaxReadChunkSize(fn);
-            mcol.setClockRate(crate);
-            exp.Reader.externalClockTerminal=clockTerm;
-            exp.ReadTickTime=exp.Reader.getTimebase();
-            exp.update('ReadTickTime');
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            % Configgure devices.
+            exp.Reader.externalClockTerminal='pfi0';
             
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-            %%% setting up the measurement...
-            % adding the measurement collection       
-            bufferCleanupRounds=fn+1;
-            if(bufferCleanupRounds<3)
-                bufferCleanupRounds=3;
-            end
-            bufferCleanupTime=exp.Reader.secondsToTimebase(bufferCleanupRounds/crate);
-            mtimes=(1:double(exp.ScanProperties.N))'*dt;
-            mdurations=diff([0;mtimes]);
+            % Configuring the measurement
+            [crate,chunkn]=exp.configureMeasurement();
+            
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            % calcilating the clock rate appropriate for the current
+            % sequence and applying to the reader. Since this is a
+            % triggered measurement only the reader dose not require a
+            % specific clock rate, but rather smt that allows it to read
+            % fast enouph.
+            
+            % setting to the reader.
+            gate.setClockRate(300e6);
+            exp.Reader.setClockRate(crate);
+            exp.Reader.SetMaxReadChunkSize(chunkn);
+            
+            % updating the display.
+            exp.ReadTickTime=exp.Reader.getTimebase();
+            exp.update('ReadTickTime');
 
-            % setting up the measurement.
-            mcol.curT=0;
-            mcol.wait(bufferCleanupTime);
-            
-            % making measurement repetitions;
-            mdurations=repmat(mdurations,exp.ScanProperties.RepCount,1);
-            
-            % check for repetitions.
-            mcol.Measure(mdurations);
-            if(length(exp.Results.Amps)~=length(mdurations))
-                exp.Results.Amps=[];
-            end
-            totalRep=length(mdurations);
-            
-            %%% configure gate modes.
-            gate.PersistValuesWhenInsertingTimes=true;
-            
-            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-            %%% The gate and triggers.
-            gate.curT=0;
-            
-            % configure clock.
-            gate.curT=0;
-            gate.ClockSignal(bufferCleanupTime,crate,1);
-            firstPulseTime=gate.curT;
-            gate.ClockSignal(dt*(totalRep+2),crate,1); % cleaup set.
-            
-            % Laser config.
-            gate.curT=firstPulseTime;
-            gate.Up(dt*totalRep,4);
-            
-
-%             % first loop is without a pulse.
-%             gate.curT=0;
-%             gate.ClockSignal(bufferCleanupTime,crate,1);
-%             
-%             loopt=gate.curT;
-%             gate.Up([],4);
-%             gate.curT=loopt;
-%             
-%             gate.curT=loopt;
-%             gate.ClockSignal(dt,crate,1);
-%             
-%             % now loop de loop.
-%             if(totalRep-1>0)
-%                 loopt=gate.StartLoop(totalRep-1);
-% 
-%                 % sequence.
-%                 gate.curT=loopt;
-%                 gate.Pulse(dt/2,dt/2,[2,3]);
-%                 gate.curT=loopt;
-%                 gate.ClockSignal(dt,crate,1);
-%                 % go to the right time.
-%                 gate.curT=loopt;
-%                 gate.wait(dt);
-%                 % stop the external loop.
-%                 gate.EndLoop();
-%             end
-%             
-%             curT=gate.curT;
-%             % reset the clock
-%             gate.Pulse(dt/5,2);
-%             curT=gate.curT;
-%             gate.Down(dt*2,4);
-%             %cleanup.
-%             gate.curT=curT;
-%             gate.ClockSignal(dt*2,crate,1);
-            
-            
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % Update the display.
             exp.PendingRepetitionCount=exp.ScanProperties.RepCount;
@@ -227,23 +139,14 @@ classdef ODMR<Experiment
             end
             exp.LastBinIndex=0;
             exp.update({'PendingRepetitionCount','LastBinIndex'});
-            
-            [gateVecs,gateT]=gate.getTTLVectors(true);
-            sizeGateVecs=size(gateVecs);
-            gateVecs=gateVecs+repmat(0:sizeGateVecs(2)-1,sizeGateVecs(1),1);
-            stairs(gateT,gateVecs);
-            dt=max(gateT)/1000;
-            gateVecs=interp1(gateT,gateVecs,0:dt:max(gateT),'linear');
-            exp.GateDisplay=struct();
-            exp.GateDisplay.dt=dt;
-            exp.GateDisplay.amp=gateVecs;
-            exp.update('GateDisplay');
+            exp.updateGateDisplay(false,false);
+
             %gate.Pulse(0);
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             
             % update to current results.
             exp.update('Results');
-            
+            mcol=exp.MeasurementCollector;
             % setting the clock rate.
             gate.prepare();
             fgen.prepare();
@@ -265,13 +168,211 @@ classdef ODMR<Experiment
             exp.Gate.stop();
             exp.IsWorking=false;
         end
+        
+        function updateGateDisplay(exp,plotMatlab,doConfigureMeasurement)
+            %updateGateDisplay Updates the gate display. 
+            %   plotMatlab - if true, plot a matlab graph.
+            %   doConfigureMeasurement - configures the measurement.
+            if(~exist('plotMatlab','var'))
+                plotMatlab=true;
+            end
+            if(~exist('doConfigureMeasurement','var'))
+                doConfigureMeasurement=true;
+            end
+            
+            if(doConfigureMeasurement)
+                exp.configureMeasurement();
+            end
+            
+            [gateVecs,gateT]=exp.Gate.getTTLVectors(false);
+            
+            sizeGateVecs=size(gateVecs);
+            gateVecs=gateVecs+repmat(1.1*(0:sizeGateVecs(2)-1),sizeGateVecs(1),1)+0.1;
+            
+            dt=max(gateT)/1000;
+
+            exp.GateDisplay=struct();
+            exp.GateDisplay.dt=dt;
+            exp.GateDisplay.amp=interp1(gateT,gateVecs,0:dt:max(gateT),'linear');;
+            exp.update('GateDisplay');            
+            
+            if(plotMatlab)
+                stairs(gateT,gateVecs);
+            end
+        end
+        
+        function [crate,chunkn]=configureMeasurement(exp,dur,nmeasures,npoints)
+            %configureMeasurement configure the gate and measurement
+            %collector for the measurement.
+            %   dur - measurement point duration.
+            %   nmeasures - the number of measurements per duration.
+            %   npoints - the total number of points to measure.
+            if(~exist('dur','var'))
+                dur=exp.ScanProperties.Dwell;
+            end
+            
+            if(~exist('nmeasures','var'))
+                nmeasures=exp.ReaderProperties.BinsPerFreq;
+            end
+            
+            if(~exist('npoints','var'))
+                npoints=exp.ScanProperties.N*exp.ScanProperties.RepCount;
+            end
+            
+            [crate,chunkn]=calculateRates(exp);
+            
+            % local def.
+            gate=exp.Gate;
+            gate.ReduceTTLloops=false;
+            col=exp.MeasurementCollector;
+            c_m=exp.SystemConfig.MTriggerChannel;
+            c_fg=exp.SystemConfig.FGTriggerChannel;
+            c_l=exp.SystemConfig.LaserChannel;
+            c_rf=exp.SystemConfig.RFChannel;
+            
+            % calculations.
+            dur_m=dur/double(nmeasures);
+            dur_p=1000/crate; % pulse duration.
+            dur_cleanup=chunkn*dur_p*2; %1 ms.
+            dur_rf=dur*abs(diff(cell2mat(exp.RFProperties.DutyCycle)))/100;
+            offset_rf=dur*min(cell2mat(exp.RFProperties.DutyCycle))/100;
+            
+            gate.defaultPulseWidth=dur_p;
+            
+            % start measuremnet.
+            gate.clear();
+            col.clear();
+            
+            % cleanup pulse for counter mode.
+            col.skip(chunkn);
+            % cleanup pulses.
+            for i=1:chunkn-1
+                gate.Pulse(dur_p,dur_p,c_m);
+            end
+            gate.Pulse(dur_p,dur_p,c_m);
+            
+            % remove all counter preloaded data. (Reset the counter).
+            gate.goBackInTime(dur_p*2);
+            
+            % laser on?
+            if(exp.SystemConfig.UseLaser)
+                gate.Up(c_l);
+            end
+
+            % measure
+            col.collect(nmeasures,[],npoints);
+            
+            % first measuremnt before the pulse.
+            if(exp.SystemConfig.UseRF)
+                gate.wait(offset_rf);
+                gate.Pulse(dur_rf,dur_p,c_rf);
+                gate.goBackInTime(dur_rf+dur_p+offset_rf);
+            end
+            
+            for i=1:nmeasures
+                gate.wait(dur_m);
+                gate.Pulse(dur_p,dur_p,c_m);
+                gate.goBackInTime(dur_p*2);
+            end
+            
+            % Do loop ? 
+            if(npoints>1)
+                lstart=gate.StartLoop(npoints-1);
+                if(exp.SystemConfig.UseFG)
+                    gate.Pulse(dur_p,dur_p,c_fg);
+                    gate.goBackInTime(dur_p*2);
+                end
+
+                for i=1:nmeasures
+                    gate.wait(dur_m);
+                    gate.Pulse(dur_p,dur_p,c_m);
+                    gate.goBackInTime(dur_p*2);
+                end
+                
+                % rf
+                if(exp.SystemConfig.UseRF)
+                    gate.curT=lstart;
+                    gate.wait(offset_rf);
+                    gate.Pulse(dur_rf,dur_p,c_rf);
+                end
+                gate.EndLoop();
+            end
+            
+            % allow the last pulse to happen.
+            gate.wait(dur_p*2);
+
+            % close laser?
+            if(exp.SystemConfig.UseLaser)
+                gate.curT=lstart;
+                gate.wait(dur);
+                gate.Down(c_l);
+            end
+            
+            % cleanup pulses.
+            for i=1:chunkn*2
+                gate.Pulse(dur_p,dur_p,c_m);
+            end
+            gate.Pulse(dur_p,dur_p,c_m);
+        end        
     end
     
     methods(Access = protected)
+        
+        function [crate,chunkn]=calculateRates(exp)
+            %calculateRates Calculates the clock rate for the ODMR. 
+            %this is an approximate value.
+            % returns:
+            %   crate - the clock rate.
+            %   chunkn - read chunk size.
+            dt=exp.ScanProperties.Dwell;
+            chunkn=double(exp.ReaderProperties.BinsPerFreq*2);
+            crate=Inf;
+            
+            while(crate>exp.ReaderProperties.MaxFreq)
+                chunkn=chunkn/2;
+                crate=1/(exp.Reader.timebaseToSeconds(dt)/chunkn);
+                crate=floor(crate);
+                if(crate<=1)
+                    crate=1;
+                    break;
+                end
+            end
+            
+            % 100 times faster then the number of chunks.
+            crate=crate*100;
+            if(crate>exp.ReaderProperties.MaxFreq)
+                crate=exp.ReaderProperties.MaxFreq;
+            end
+        end
+        
+        function updateFunctionGeneratorProperties(exp,sendToDevice)
+            %updateFunctionGeneratorProperties update the function
+            %generator properties
+            %   sendToDevice - if true the fg device will be updated to the
+            %   new properties.
+
+            if(~exist('sendToDevice','var'))
+                sendToDevice=true;
+            end
+            
+            fgen=exp.FGen;
+            fgen.StartFrequency=exp.ScanProperties.Start*1e6;
+            fgen.EndFrequency=exp.ScanProperties.End*1e6;
+            fgen.NumberOFSweepPoints=exp.ScanProperties.N;
+            fgen.Amplitude=exp.RFProperties.Amplitude;
+            fgen.TriggerSource='EXT';
+            
+            if(sendToDevice)
+                fgen.prepare();
+                fgen.run();
+            end
+        end
+
+        
         function binComplete(exp,s,e)
             binsDone=exp.ScanProperties.RepCount-...
                 exp.PendingRepetitionCount;
-            binIndexOffset=binsDone*exp.ScanProperties.N;
+            binIndexOffset=binsDone*exp.ReaderProperties.BinsPerFreq-1;
             
             bidx=e.BinIndex-binIndexOffset;
             while(bidx>exp.ScanProperties.N)
@@ -283,7 +384,7 @@ classdef ODMR<Experiment
             if(isempty(e.Data))
                 exp.Stream=[];
             else
-                exp.Stream=e.Data(:,2);
+                exp.Stream=e.Data;
                 amps=mean(exp.Stream);
             end
             

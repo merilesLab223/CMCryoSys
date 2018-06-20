@@ -5,7 +5,8 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
     methods
         % constructor, and send info to parent.
         function obj = NI6321Positioner2D(varargin)
-            obj=obj@NI6321Core(varargin);
+            obj=obj@NI6321Core(varargin{:});
+            parseAndAssignFromVarargin(obj,{'xchan','ychan'},varargin);
         end
     end
     

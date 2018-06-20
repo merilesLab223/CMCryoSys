@@ -1,7 +1,9 @@
 classdef Device < handle
     % constructor
     methods
-        function [obj]=Device()
+        function [obj]=Device(varargin)
+            % setting the device properties.
+            parseAndAssignFromVarargin(obj,{'name'},varargin);
         end
     end
     

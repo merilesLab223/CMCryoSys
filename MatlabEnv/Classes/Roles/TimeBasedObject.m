@@ -20,6 +20,10 @@ classdef TimeBasedObject < handle & TimeKeeper
             end
             obj.curT=duration*ceil(obj.curT/duration);
         end
+        
+        function [t]=roundTimesToClock(obj,t)
+            t=round(t/obj.getTimebase())*obj.getTimebase();
+        end
     end
     
     % time methods

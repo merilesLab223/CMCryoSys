@@ -147,10 +147,13 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
             end
             
             % processing the current.
+            ev=DAQEventStruct();
+            ev.RawData=data;
+            
+            % processing the data.
             [ts,data]=obj.processDataBatch(ts,data);
             obj.TickCount=obj.TickCount+dlen;
             
-            ev=DAQEventStruct();
             ev.Data=data;
             ev.TimeStamps=ts;
             ev.TotalTicksSinceStart=obj.TickCount;

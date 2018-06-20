@@ -1,4 +1,4 @@
-classdef TimeBinEventStruct < EventStruct
+classdef BinEventStruct < EventStruct
     %TIMEBINEVEN Summary of this class goes here
     %   Detailed explanation goes here
     
@@ -7,7 +7,7 @@ classdef TimeBinEventStruct < EventStruct
     end
     
     methods
-        function obj = TimeBinEventStruct(binIndex,binData)
+        function obj = BinEventStruct(binIndex,binData)
             obj.Data=binData;
             obj.BinIndex=binIndex;
         end

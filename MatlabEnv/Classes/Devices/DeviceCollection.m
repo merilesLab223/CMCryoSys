@@ -24,14 +24,15 @@ classdef DeviceCollection < handle
     
     % collection methods
     methods
-        % returns true if the current contains a device 
-        % with the specified name.
         function [rt]=contains(col,name)
+        % returns true if the current contains a device 
+        % with the specified name            
             rt=col.deviceByName.isKey(name);
         end
         
-        % returns the device.
+        
         function [dev]=get(col,name)
+            % returns the device.
             dev=[];
             if(~col.contains(name))
                 return;
@@ -49,24 +50,24 @@ classdef DeviceCollection < handle
             end
         end
         
-        % sets the device by the name.
         function set(col,name,dev)
+            % sets the device by the name.
             col.deviceByName(name)=dev;
             if(isempty(dev.name))
                 dev.name=name;
             end
         end
         
-        % removes the device by the name.
         function remove(col,name)
+            % removes the device by the name.
             if(~col.contains(name))
                 return;
             end
             col.deviceByName.remove(name);
         end
         
-        % collection get.
         function varargout = subsref(col,id)
+            % collection get.
             switch(id(1).type)
                 case '.'
                     [varargout{1:nargout}]=builtin('subsref',col,id);
@@ -108,11 +109,55 @@ classdef DeviceCollection < handle
                 devlist{end+1}=devs{i};
             end
         end
+
+    end
+    
+    methods
+        function [dev]=getOrCreate(col,dev,varargin)
+            % Either gets the first device with the same class name
+            % or creates one if one dose not exist.            
+            cname=class(dev);
+            if(ischar(dev))
+                cname=dev;
+            end            
+            dev=col.getOrCreateWithName(cname,dev,varargin{:});
+        end
+        
+        function [dev]=getOrCreateWithName(col,name,dev,varargin)
+            % Either gets the first device with the same name
+            % or creates one if one dose not exist.
+            cname=class(dev);
+            if(ischar(dev))
+                cname=dev;
+            end
+            
+            if(isempty(name))
+                name=cname;
+            end
+            
+            if(col.contains(name))
+                dev=col.get(name);
+                return;
+            end
+            
+            if(~isa(dev,'Device'))
+                if(isempty(meta.class.fromName(cname)))
+                    error(['Device of type ',cname,' not found.']);
+                end
+                dev=feval(dev,varargin{:});
+                if(~isa(dev,'Device'))
+                    error(['The class of type ',cname,' is not a Device class.',...
+                        ' Please use a class derived from Device.']);
+                end
+            end
+            col.set(name,dev);
+        end        
     end
     
     % listing methods
     methods
         function [names,devtypes]=ListLoaded(col)
+            % list all loaded devices and thire types.
             names=col.deviceByName.keys;
             devtypes=cell(size(names));
             devs=col.deviceByName.values;

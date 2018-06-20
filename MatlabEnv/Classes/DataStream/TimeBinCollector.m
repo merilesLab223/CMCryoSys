@@ -183,7 +183,7 @@ classdef TimeBinCollector < DataStream
             for i=1:length(completedBinIdxs)
                 binIdx=completedBinIdxs(i);
                 data=curCompleatedResults{i};
-                ev=TimeBinEventStruct(binIdx,data);
+                ev=BinEventStruct(binIdx,data);
                 if(obj.KeepResultsInMemory)
                     obj.Results{binIdx}=data;
                 end

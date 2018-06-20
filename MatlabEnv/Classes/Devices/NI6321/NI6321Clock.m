@@ -11,6 +11,7 @@ classdef NI6321Clock < NI6321Core & Clock
         % constructor, and send info to parent.
         function obj = NI6321Clock(varargin)
             obj=obj@NI6321Core(varargin);
+            parseAndAssignFromVarargin(obj,{'ctrName','clockFreq'},varargin);
             obj.Rate=obj.clockFreq;
         end
     end

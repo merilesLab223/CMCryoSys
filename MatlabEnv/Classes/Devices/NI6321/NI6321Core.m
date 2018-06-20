@@ -4,7 +4,8 @@ classdef NI6321Core < Device & TimeBasedObject
     
     methods
         function [obj]=NI6321Core(varargin)
-            if(length(varargin)>0 && ischar(varargin(1)))obj.niDevID=varargin(1);end
+            obj@Device(varargin{:});
+            parseAndAssignFromVarargin(obj,{'niDevID'},varargin);
         end
     end
     
@@ -21,7 +22,7 @@ classdef NI6321Core < Device & TimeBasedObject
         niSession=[];
         niDevID=[];
         externalClockTerminal='';
-        ThrowErrors=false;
+        ThrowErrors=true;
     end
     
     properties (SetAccess = private)
@@ -47,17 +48,27 @@ classdef NI6321Core < Device & TimeBasedObject
             if(isempty(s))
                 return;
             end
-            fprintf([obj.name,' (',class(obj),': ']);
-            if(s.IsRunning)
-                fprintf('Stopping ...');
-                s.stop();
-                fprintf('stopped. ');
+            try                
+                if(s.IsRunning)
+                    fprintf([obj.name,' (',class(obj),': ']);
+                    fprintf('Stopping ...');
+                    s.stop();
+                    pause(0.001);
+                    disp('stopped. ');
+                end
+                s.release();                
+            catch err
+                % restart the session and mark the current as
+                % unconfigured.
+                obj.isConfigured=false;
+                delete(s);
+                obj.niSession=[];              
+                obj.configure();
+                obj.LastStopTime=now;
+                rethrow(err);
             end
-            fprintf('Releasing resources...');
-            s.release();
             %wait(s);
             obj.LastStopTime=now;
-            fprintf(['Done.',newline]);
         end
         
         function [rslt]=hasExternalClock(obj)
