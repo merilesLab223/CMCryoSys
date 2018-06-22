@@ -93,15 +93,17 @@ classdef StreamCollector< handle & DataStream
                 ts=[];
                 data=[];
             end
-            obj.MeanV=mean(e.Data,1);
-            dlen=length(e.TimeStamps);
-            data(end+1:end+dlen,:)=e.Data;
             
             if(isempty(ts))
                 ts=e.TimeStamps;
+                data=e.Data;
             else
+                dlen=length(e.TimeStamps);
                 ts(end+1:end+dlen)=e.TimeStamps;
+                data(end+1:end+dlen,:)=e.Data;
             end
+            
+            obj.MeanV=mean(data,1);
             
             if(isempty(ts))
                 % finding the locaiton where to slice.
@@ -142,6 +144,7 @@ classdef StreamCollector< handle & DataStream
         function [ts,data]=SliceToOffset(obj,ts,data)
             offset=(ts(end)-obj.CollectDT); % from end
             idxs=find(ts>offset);
+%             idxs=idxs(idxs<=length(data));
             data=data(idxs);
             ts=ts(idxs);            
         end

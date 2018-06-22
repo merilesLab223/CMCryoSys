@@ -25,7 +25,7 @@ classdef SpinCoreBase < Device & TimeBasedObject
         
         % long delay min time (in timebase). the time where the instruction is split into
         % a long delay instruction. See SpinCore API for help.
-        LongDelayMinTime = 60*60*1000; % an hour        
+        LongDelayMinTime = 60*1000; % one minute. 
     end
     
     % property getters

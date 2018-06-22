@@ -19,53 +19,94 @@ classdef NI6321Core < Device & TimeBasedObject
         RunTimeout=1000;
         NICardMatchPattern='6321';
         triggerTerm='';
-        niSession=[];
+        
         niDevID=[];
         externalClockTerminal='';
         ThrowErrors=true;
+        IsContinuous=[];
+        
+        % the duration of the measurement. Will reset to [] after each
+        % prepare.
+        Duration=[];        
+    end
+    
+    properties (Access = private)
+        m_niSession=[];
+    end
+    
+    methods
+        function [rt]=get.Duration(obj)
+           rt=obj.secondsToTimebase(obj.niSession.DurationInSeconds);
+        end
+        function set.Duration(obj,val)
+            obj.niSession.DurationInSeconds=obj.timebaseToSeconds(val);
+        end
+        
+        function [s]=get.niSession(obj)
+            obj.validateSession();
+            s=obj.m_niSession;
+        end
+        
+        function [s]=get.IsContinuous(obj)
+            s=obj.niSession.IsContinuous;
+        end
+        
+        function set.IsContinuous(obj,val)
+            obj.niSession.IsContinuous=val;
+        end
     end
     
     properties (SetAccess = private)
+        niSession=[];
         hasTrigger=0;
         IsDeleted=false;
-        BatchHandle=[];
         LastStopTime=-1;
         IsRunning=[];
         externalClockConnectionIndex=0;
+        ErrorOccuredEventListener=[];
+        
     end
     
     % methods for NI card.
     methods
-        function [rt]=get.IsRunning(obj)
-            rt=false;
-            if(~isempty(obj.niSession))
-                rt=obj.niSession.IsRunning;
+        
+        function clearConfiguration(obj)
+            clearConfiguration@Device(obj);
+            obj.externalClockConnectionIndex=0;
+            if(~isempty(obj.ErrorOccuredEventListener)...
+                    && isvalid(obj.ErrorOccuredEventListener))
+                delete(obj.ErrorOccuredEventListener);
+                obj.ErrorOccuredEventListener=[];
             end
+            obj.hasTrigger=0;
+            obj.niSession=[];
+        end
+        
+        function [rt]=get.IsRunning(obj)
+            rt=obj.isSessionRunning();
         end
         
         function []=stop(obj)
+            if(~isvalid(obj))
+                return;
+            end
             s=obj.niSession;
             if(isempty(s))
                 return;
             end
-            try                
-                if(s.IsRunning)
-                    fprintf([obj.name,' (',class(obj),': ']);
+
+            try
+                if(obj.IsRunning)
+                    fprintf([obj.name,' (',class(obj),'): ']);
                     fprintf('Stopping ...');
                     s.stop();
-                    pause(0.001);
                     disp('stopped. ');
                 end
-                s.release();                
             catch err
                 % restart the session and mark the current as
                 % unconfigured.
-                obj.isConfigured=false;
-                delete(s);
-                obj.niSession=[];              
-                obj.configure();
-                obj.LastStopTime=now;
-                rethrow(err);
+                obj.clearConfiguration();
+                warning(err.message);
             end
             %wait(s);
             obj.LastStopTime=now;
@@ -79,6 +120,9 @@ classdef NI6321Core < Device & TimeBasedObject
         function SetMaxReadChunkSize(obj,size)
             obj.niSession.IsNotifyWhenDataAvailableExceedsAuto=size<=0;
             if(size>0)
+                if(size>obj.niSession.NumberOfScans)
+                    size=obj.niSession.NumberOfScans;
+                end
                 obj.niSession.NotifyWhenDataAvailableExceeds=size;
             end
         end
@@ -86,12 +130,18 @@ classdef NI6321Core < Device & TimeBasedObject
     
     methods (Access = private)
         function [rt]=do_stopcommand(obj)
-
+            
         end
     end
     
     % general methods
     methods (Access = protected)
+        function [rt]=isSessionRunning(obj)
+            rt=false;
+            if(~isempty(obj.niSession))
+                rt=obj.niSession.IsRunning;
+            end
+        end
         
         function [rslt]=hasDigitalLoopback(obj)
             rslt=~isempty(obj.triggerTerm)&&~isempty(obj.loopbacktriggerTermChan);
@@ -112,20 +162,18 @@ classdef NI6321Core < Device & TimeBasedObject
         end
         
         function []=validateSession(obj)
-            % find the NI devie.
-            if(~isnumeric(obj.niSession))
+            if(~isempty(obj.m_niSession)&&~isvalid(obj.m_niSession))
+                % has invalid session. Clear the config.
+                obj.clearConfiguration();
+            elseif(~isempty(obj.m_niSession))
                 return;
             end
-            obj.makeSession();
-        end
-        
-        function []=makeSession(obj)
-            if(~isnumeric(obj.niSession))
-                obj.stop();
-            end
+            
+            % find the NI devie.
             obj.niDevID=obj.findNIDevice();
-            obj.niSession=daq.createSession('ni');
-            obj.niSession.addlistener('ErrorOccurred',@obj.onNIError);
+            obj.m_niSession=daq.createSession('ni');
+            obj.ErrorOccuredEventListener= ...
+                obj.m_niSession.addlistener('ErrorOccurred',@obj.onNIError);
         end
         
         % configures clock connections after everthing else was added.
@@ -149,14 +197,11 @@ classdef NI6321Core < Device & TimeBasedObject
             s=obj.niSession;
             % checking for externalClock config.
             % adding triggerTerms.
+            obj.clearClockTerms();
             if(~isempty(obj.externalClockTerminal))
-                if(~obj.externalClockConnectionIndex)
-                    % need to add triggerTerm.
-                    [~,obj.externalClockConnectionIndex]=s.addClockConnection('External',...
-                        [obj.niDevID,'/',obj.externalClockTerminal],'ScanClock');
-                end
-            elseif(obj.externalClockConnectionIndex~=0)
-                obj.clearClockTerms();
+                % need to add triggerTerm.
+                [~,obj.externalClockConnectionIndex]=s.addClockConnection('External',...
+                    [obj.niDevID,'/',obj.externalClockTerminal],'ScanClock');
             end
         end
         
@@ -176,14 +221,10 @@ classdef NI6321Core < Device & TimeBasedObject
             s=obj.niSession;
             % checking for triggerTerm config.
             % adding triggerTerms.
+            obj.clearTirggerTerms();
             if(~isempty(obj.triggerTerm))
-                if(~obj.hasTrigger)
-                    % need to add triggerTerm.
-                    [~,obj.hasTrigger]=s.addTriggerConnection('external',[obj.niDevID,'/',obj.triggerTerm],'StartTrigger');
-                    %trg.TriggerCondition=
-                end
-            elseif(obj.hasTrigger~=0)
-                obj.clearTirggerTerms();
+                % need to add triggerTerm.
+                [~,obj.hasTrigger]=s.addTriggerConnection('external',[obj.niDevID,'/',obj.triggerTerm],'StartTrigger');
             end
         end
         
@@ -191,7 +232,7 @@ classdef NI6321Core < Device & TimeBasedObject
             %warning();
             msg=['Found ni error while executing:',newline,e.Error.message];
             if(obj.ThrowErrors)
-                error(msg);
+                warning(msg);
             else
                 disp(msg);
             end
@@ -226,6 +267,7 @@ classdef NI6321Core < Device & TimeBasedObject
                 obj.stop();
             end
             s=obj.niSession;
+            s.release(); % release previous resources.
             s.Rate=obj.Rate;
             obj.makeTriggerTerms();
             obj.makeExternalClockTerms();

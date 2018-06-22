@@ -6,6 +6,7 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
         % constructor, and send info to parent.
         function obj = NI6321Positioner2D(varargin)
             obj=obj@NI6321Core(varargin{:});
+            %obj.configureThreadedRunDispatch();
             parseAndAssignFromVarargin(obj,{'xchan','ychan'},varargin);
         end
     end
@@ -27,12 +28,26 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
 
     % device methods
     methods (Access = protected)
+                
+        function [rt]=isSessionRunning(obj)
+            rt=false;
+            if(~isempty(obj.niSession))
+                rt=obj.niSession.IsRunning && ...
+                    (obj.IsContinuous || obj.niSession.ScansQueued>9);
+            end
+        end
+        
         function configureDevice(obj)
             % find the NI devie.
             obj.validateSession();
             s=obj.niSession;
-            [cx]=s.addAnalogOutputChannel(obj.niDevID,obj.xchan,'Voltage');
-            [cy]=s.addAnalogOutputChannel(obj.niDevID,obj.ychan,'Voltage');
+            %s.NotifyWhenDataAvailableExceeds=false;
+            s.NotifyWhenScansQueuedBelow=10000000;
+            %s.NumberOfScans
+            if(isempty(s.Channels))
+                [cx]=s.addAnalogOutputChannel(obj.niDevID,obj.xchan,'Voltage');
+                [cy]=s.addAnalogOutputChannel(obj.niDevID,obj.ychan,'Voltage');
+            end
         end
         
         function doResetSingleScan(obj)
@@ -47,7 +62,7 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
             s.Rate=oldRate;
         end
     end
-    
+
     methods
         % used to call a position event. 
         % the position event will be called to execute data.
@@ -70,23 +85,14 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
                 return;
             end
             
-            %totalSec=obj.timebaseToSeconds(obj.totalExecutionTime);
-            missing=2;
-            % ticks missing
-            missing=ceil(missing/obj.getTimebase());
-            if(missing>0)
-                mdata=repmat(data(end,:),missing,1);
-                data=[data;mdata];
-                %s.queueOutputData(repmat(data(end,:),missing,1));
-            end
             s.queueOutputData(data);
             % will be stuck unless properly set.
             % WHY THE HELL THIS IS HAPPENING???
-            obj.SetMaxReadChunkSize(-1);
             
             % prepare the session.
             s.prepare();
         end
+
 
         function run(obj)
             if(obj.totalExecutionTime<=0)
@@ -97,15 +103,19 @@ classdef NI6321Positioner2D < NI6321Core & Positioner2D
                 disp('Attempting to call run on positioner without prepare. Please call prepare.');
                 return;
             end
-            
+            %obj.m_runDispatch.trigger(1);
             s.startBackground();
         end
+
         
         function stop(obj)
+%             if(obj.IsRunning)
+%                 s=obj.niSession;disp({s.ScansAcquired;s.ScansOutputByHardware;s.ScansQueued})
+%             end
             stop@NI6321Core(obj);
         end
     end
-    
+
     %timebase overrides.
     methods
         % overridable set clock rate.

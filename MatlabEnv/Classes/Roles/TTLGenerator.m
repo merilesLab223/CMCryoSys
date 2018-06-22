@@ -38,8 +38,11 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
             if(~exist('chan','var') || isempty(chan))
                 chan=obj.Channel;
             end
+            t=double(t);
+            dur=double(dur);
             
-            lv=length(b);
+            lv=size(b);
+            lv=lv(1);
             if(~exist('dur','var') || isempty(dur))
                 dur=ones(size(t))*obj.getTimeBase();
             end
@@ -68,10 +71,7 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
             if(~exist('c','var') || isempty(c))
                 c=obj.Channel;
             end
-            if(~exist('dur','var') || isempty(dur))
-                dur=obj.getTimebase();
-            end
-            obj.SetBitsAt(ones(size(dur)),obj.curT,0,c);
+            obj.SetBitsAt(ones(1,length(c)),obj.curT,0,c);
         end
         
         function Down(obj,c)
@@ -79,10 +79,7 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
             if(~exist('c','var') || isempty(c))
                 c=obj.Channel;
             end
-            if(~exist('dur','var') || isempty(dur))
-                dur=obj.getTimebase();
-            end
-            obj.SetBitsAt(zeros(size(dur)),obj.curT,0,c);
+            obj.SetBitsAt(zeros(1,length(c)),obj.curT,0,c);
         end
         
         function PulseAt(obj,t,durUp,c)
@@ -164,6 +161,12 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
             else
                 obj.Up(remTime,c);
             end
+        end
+        
+        function [dur]=getTotalDuration(obj)
+            % slow version.
+            [~,t]=obj.getTTLVectors();
+            dur=max(t);
         end
 
         function [ttl,t]=getTTLVectors(obj,loopTypeFilter)

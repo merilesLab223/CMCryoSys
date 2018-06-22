@@ -38,6 +38,10 @@ classdef Device < handle
     
     % general execution functions.
     methods
+        function clearConfiguration(obj)
+            obj.isConfigured=false;
+        end
+        
         % called to configure the device.
         function []=configure(obj)
             if(obj.isConfigured)

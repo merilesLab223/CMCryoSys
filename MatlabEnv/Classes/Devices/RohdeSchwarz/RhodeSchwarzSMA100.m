@@ -6,11 +6,8 @@ classdef RhodeSchwarzSMA100 < RohdeSchwarzBase
         end
     end
     
-    properties(SetAccess = protected)
-        Frequency=0;
-    end
-    
     properties
+        Frequency=0;
         Amplitude=0;
         RFState=0;
         TriggerSource='';

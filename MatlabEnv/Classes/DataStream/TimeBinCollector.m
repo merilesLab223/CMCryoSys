@@ -20,7 +20,6 @@ classdef TimeBinCollector < DataStream
         function reset(obj)
             obj.Results={};
             obj.curT=0;
-            obj.TOffset=0;
         end
         
         function prepare(obj)
@@ -69,7 +68,6 @@ classdef TimeBinCollector < DataStream
         m_curBinIndex=1;
         m_pendingBins=[];
         m_maxT=-1;
-        
     end
     
     % collection protected methods
@@ -83,7 +81,7 @@ classdef TimeBinCollector < DataStream
                 return;
             end
             
-            ets=e.TimeStamps-obj.TOffset;
+            ets=e.TimeStamps;
             
             % OvercollectDataTime is used since the precision is required.
             if(ets(1)<=obj.m_maxT)
@@ -112,13 +110,34 @@ classdef TimeBinCollector < DataStream
             
             % processing the bin data.
             try
-                obj.processBinData();
+                [ridxs,rslts]=obj.processBinData();
+                if(~isempty(rslts))                
+                    % updating state
+                    lbin=numel(obj.MeasureBins);
+                    lpend=numel(obj.m_pendingBins);
+                    obj.CompleatedPercent=100*(lbin-lpend)/lbin;
+
+                    if(~isempty(ridxs))
+                        if(obj.KeepResultsInMemory)
+                            obj.Results(ridxs)=rslts(:);
+                        end           
+                        ev=BinEventStruct(ridxs,rslts);
+                        obj.notify('BinComplete',ev);
+                    end
+                end
+                if(isempty(obj.m_pendingBins))
+                    obj.stop(); % stop the reader since it was complete.
+                    ev=EventStruct();
+                    obj.notify('Complete',ev);
+                end
             catch err
                 rethrow(err);
             end
         end
         
-        function processBinData(obj)
+        function [ridxs,rslts]=processBinData(obj)
+            ridxs=[];
+            rslts={};
             if(isempty(obj.StreamT))
                 return;
             end
@@ -128,13 +147,12 @@ classdef TimeBinCollector < DataStream
             % finding the appropriate bins.
             requiredMinStart=Inf;
             completedIdxs=[];
-            completedBinIdxs=[];
             for i=1:length(obj.m_pendingBins)
                 bidx=obj.m_pendingBins(i);
                 mbin=obj.MeasureBins{bidx};
                 if(mbin.end<ets)
                     completedIdxs(end+1)=i;
-                    completedBinIdxs(end+1)=bidx;
+                    ridxs(end+1)=bidx;
                 elseif(mbin.start<ets && mbin.end>=ets)
                     if(mbin.start<requiredMinStart)
                         requiredMinStart=mbin.start;
@@ -153,14 +171,14 @@ classdef TimeBinCollector < DataStream
             end
             
             % collecting data for the bins.
-            curCompleatedResults=cell(1,length(completedBinIdxs));
-            for i=1:length(completedBinIdxs)
-                bidx=completedBinIdxs(i);
+            rslts=cell(1,length(rslts));
+            for i=1:length(ridxs)
+                bidx=ridxs(i);
                 mbin=obj.MeasureBins{bidx};
                 idxs=obj.fastFindBinIdxs(mbin.start,mbin.end);
                 data=[obj.StreamT(idxs),obj.StreamData(idxs,:)];
                 
-                curCompleatedResults{i}=data;
+                rslts{i}=data;
             end
             
             if(obj.RemoveProcessedData && requiredMinStart>sts)
@@ -173,27 +191,6 @@ classdef TimeBinCollector < DataStream
                     obj.StreamT(idxs)=[];
                     obj.StreamData(idxs)=[];                    
                 end
-            end
-            
-            % updating state
-            lbin=numel(obj.MeasureBins);
-            lpend=numel(obj.m_pendingBins);
-            obj.CompleatedPercent=100*(lbin-lpend)/lbin;
-
-            for i=1:length(completedBinIdxs)
-                binIdx=completedBinIdxs(i);
-                data=curCompleatedResults{i};
-                ev=BinEventStruct(binIdx,data);
-                if(obj.KeepResultsInMemory)
-                    obj.Results{binIdx}=data;
-                end
-                obj.notify('BinComplete',ev);
-            end
-            
-            if(isempty(obj.m_pendingBins))
-                ev=EventStruct();
-                obj.stop(); % stop the reader since it was complete.
-                obj.notify('Complete',ev);
             end
         end
         
@@ -233,23 +230,14 @@ classdef TimeBinCollector < DataStream
     properties (SetAccess = protected)
         % the collection of measurment tbins.
         MeasureBins={};
-        TOffset=0;
     end
     
     methods
         function clear(obj)
             obj.reset();
             obj.MeasureBins={};
-            obj.TOffset=0;
         end
-%         
-%         function continueToNextBatch(obj)
-%             obj.TOffset=obj.curT;
-%             obj.StreamT=[];
-%             obj.StreamData=[];
-%             obj.m_pendingBins=1:length(obj.MeasureBins);
-%         end
-        
+
         function Measure(obj,duration)
             % if no collection function use default.
             t=obj.curT+cumsum(duration)-duration(1); % measurement times.

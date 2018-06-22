@@ -1,4 +1,4 @@
-function [img,updatedIdxs] = StreamToImageData(rslt,coln,rown,dwellTime,multidir,toff)
+function [img,updatedIdxs] = StreamToImageData(rslt,coln,rown,dwellTime,multidir,toff,img)
     % splicing according to dwell time.
     if(~exist('multidir','var'))
         multidir=0;
@@ -10,7 +10,10 @@ function [img,updatedIdxs] = StreamToImageData(rslt,coln,rown,dwellTime,multidir
     
     % do not update anything, create zero image.
     updatedIdxs=[];
-    img=zeros(coln,rown);
+    if(~exist('img','var') || ~isnumeric(img) || any(size(img)~=[coln,rown]))
+        img=zeros(coln,rown);
+    end
+        
     tlen=numel(img);
     
     % get the data vectorl

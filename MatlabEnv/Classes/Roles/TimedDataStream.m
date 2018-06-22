@@ -34,31 +34,36 @@ classdef TimedDataStream < TimeKeeper
         function SetTimedData(obj,t,data,chans)
             % sets timed data. Used property chans to specific the channel.
             % data channels is in the columns.
+            if(~isvector(t))
+                error('Time must be a single vector of numbers.');
+            end
             if(~iscolumn(t))
                 t=t';
             end
             
             sdata=size(data);
-            if(min(sdata)==1 && ~iscolumn(data))
+            
+            if(~exist('chans','var'))
+                chans=1:sdata(2); % on colums.
+            end
+            % validate data sizes.
+            if(length(chans)==1 && isvector(data)&&~iscolumn(data))
                 data=data';
             end
-            
             if(sdata(1)~=length(t))
                 error('TimeKeeper:error:Length of vector t must be equal to the number of rows in data');
             end
-            if(~exist('chans','var'))
-                chans=1:sdata(2); % on colums.
-            elseif(sdata(2)==1&&length(chans)>1)
+            if(length(chans)>1 && sdata(2)~=length(chans))
+                error('TimeKeeper:error:The number of channles must be the same as the number of data columns.');
+            end
+           
+            if(sdata(2)~=length(chans))
                 data=repmat(data,1,length(chans));
                 sdata=size(data);
             end
             
             if(length(chans)~=sdata(2))
                 error('TimeKeeper:error:Number of columns in data must match the number of channels.');
-            end
-            
-            if(sdata(2)==1 && length(chans)>1)
-                data=repmat(data,1,length(chans));
             end
             
             obj.m_tkIsValid=false;

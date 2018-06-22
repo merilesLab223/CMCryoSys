@@ -389,7 +389,7 @@ classdef ImageScan < Experiment
         end
         
         function updateClockFlags(exp,sendToDevice)
-            exp.Clock.SetOutput([3,4],[exp.IsRFChanOpen,exp.IsRFChanOpen]...
+            exp.Clock.SetOutput([3,5],[exp.IsLaserChanOpen,exp.IsRFChanOpen]...
                 ,sendToDevice);            
         end
     end
@@ -398,7 +398,6 @@ classdef ImageScan < Experiment
     methods
         function init(exp)
             % initializes the experiment.
-            
             exp.resetStatusFlags();
             exp.IsWorking=true;
             
@@ -658,8 +657,9 @@ classdef ImageScan < Experiment
             exp.ConfigureStreamDataCollector(clockrate);
             
             % preparing the streaming reader chunk size.
+            exp.Reader.IsContinuous=true;
             exp.Reader.SetMaxReadChunkSize(readChunkSize);
-            
+
             % Streaming...
             % preparing
             exp.Reader.prepare();
@@ -685,9 +685,14 @@ classdef ImageScan < Experiment
         
         % ccalled when the stream has ready data.
         function OnStreamDataReady(exp,s,e)
+            if(~isvalid(exp))
+                return;
+            end
+            
             if(~isa(exp.StreamDataCollector,'StreamCollector'))
                 return;
             end
+            
             scol=exp.StreamDataCollector;
             [data,dt]=scol.getData();
             if(isempty(data))
@@ -722,6 +727,7 @@ classdef ImageScan < Experiment
     properties (Access = private)
         m_curScanDwellTime=0;
         m_activeTempFile=[];
+        m_lastRawImg=[];
     end
     
     % Scanning methods
@@ -757,7 +763,6 @@ classdef ImageScan < Experiment
             exp.ImageProperties.FromCenter=exp.ScanParameters.FromCenter;
             exp.update('ImageProperties');
 
-            
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % adjusting the scan parameters.
             
@@ -770,8 +775,12 @@ classdef ImageScan < Experiment
             % dewell time.
             dwell=exp.ScanParameters.Time;
             if(~exp.ScanParameters.AsDwellTime)
-               dwell=dwell./(n^2);
+                totalTime=dwell;
+                dwell=dwell./(n^2);
+            else
+                totalTime=(n^2)*dwell;
             end
+            totalTime=totalTime+dwell*10;
             
             exp.m_curScanDwellTime=dwell;
             
@@ -823,6 +832,7 @@ classdef ImageScan < Experiment
 
             % setting triggers and clock terminals.
             exp.Reader.externalClockTerminal=clockTerm;
+
             exp.Pos.externalClockTerminal=clockTerm;
             exp.Pos.triggerTerm=triggerTerm;
             % analog clock requries trigger.
@@ -832,7 +842,7 @@ classdef ImageScan < Experiment
 
             % setting the clock rates.
             exp.Pos.setClockRate(measureClockRate);
-            exp.Reader.setClockRate(measureClockRate); 
+            exp.Reader.setClockRate(measureClockRate);
             
             % setting the clock operation rate.
             if(exp.SystemConfig.UseInternalClock)
@@ -893,18 +903,15 @@ classdef ImageScan < Experiment
 
             exp.ScanDataCollector.clear();
             exp.ScanDataCollector.setClockRate(measureClockRate);
-            exp.ScanDataCollector.addlistener('Complete',...
-                @exp.OnScanDataComplete);
-            if(mbins>1)
-            exp.ScanDataCollector.addlistener('BinComplete',...
-                @exp.OnScanDataBinComplete);
-            end
             exp.ScanDataCollector.Measure(mtbins);
 
             %%%%%%%%%%%%%%%%%%%%%%%%%
             % prepare and run.
+            exp.m_lastRawImg=[];
             
             % preparing the streaming reader chunk size.
+            exp.Reader.IsContinuous=false;
+            exp.Reader.Duration=totalTime*2;
             exp.Reader.SetMaxReadChunkSize(maxchunk);
             exp.ScanDataCollector.reset();
             exp.StreamDataCollector.reset();
@@ -929,7 +936,37 @@ classdef ImageScan < Experiment
             exp.Clock.run();
         end
         
+        
+        function OnScanDataBinComplete(exp,s,e)
+            if(~isvalid(exp))
+                return;
+            end
+            if(~isa(exp.ScanDataCollector,'TimeBinCollector'))
+                return;
+            end
+            exp.ProcessScanResults(exp.ScanDataCollector.Results,...
+               exp.ScanDataCollector.CompleatedPercent);
+        end
+        
+        function ProcessScanResults(exp,rslts,comp)
+            n=exp.ScanParameters.N;
+            toff=0.19+exp.Pos.secondsToTimebase(1/exp.Pos.Rate);
+            img=StreamToImageData(rslts,n,n,...
+                exp.m_curScanDwellTime,exp.ScanParameters.MultiDir,toff,exp.m_lastRawImg);
+            exp.m_lastRawImg=img;
+            img=uint16(img);
+            exp.setScanImage(img);
+            exp.ScanProgress=comp;
+            exp.update({'ScanProgress'});
+            if(~isempty(exp.m_activeTempFile))
+                
+            end
+        end
+        
         function OnScanDataComplete(exp,s,e)
+            if(~isvalid(exp))
+                return;
+            end
             % finalizing.
             if(~isa(exp.ScanDataCollector,'TimeBinCollector'))
                 return;
@@ -940,41 +977,18 @@ classdef ImageScan < Experiment
                 exp.StreamDataCollector.stop();
             end
 
-            %exp.ProcessScanResults(rslts,comp);
             exp.IsWorking=false;
             exp.update('IsWorking');
             
+            % call to stop;
+            exp.stopAllDevices(false);
+            
             if(wasStreaming)
                 exp.doStream(true);
-            else
-                exp.stopAllDevices(false);
             end
             exp.updatePosition(true);
             exp.IsLaserChanOpen=exp.IsLaserChanOpen;
             exp.IsRFChanOpen=exp.IsLaserChanOpen;
-        end
-        
-        function OnScanDataBinComplete(exp,s,e)
-            if(~isa(exp.ScanDataCollector,'TimeBinCollector'))
-                return;
-            end
-            exp.ProcessScanResults(exp.ScanDataCollector.Results,...
-                exp.ScanDataCollector.CompleatedPercent);
-        end
-        
-        function ProcessScanResults(exp,rslts,comp)
-            n=exp.ScanParameters.N;
-            toff=0.19+exp.Pos.secondsToTimebase(1/exp.Pos.Rate);
-            img=uint16(StreamToImageData(rslts,n,n,...
-                exp.m_curScanDwellTime,exp.ScanParameters.MultiDir,toff));
-            exp.setScanImage(img);
-%            exp.ScanImage=exp.ScanImage;
-            exp.ScanProgress=comp;
-            exp.update({'ScanProgress'});
-            
-            if(~isempty(exp.m_activeTempFile))
-                
-            end
         end
         
         function [fn]=getNextScanTempFile(exp,name)

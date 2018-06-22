@@ -225,9 +225,12 @@ classdef DeviceCollection < handle
                     if(strcmp(ext,'.m') && ...
                             exist([packageName,fn],'class')>0)
                         % this is a class file.
-                        sprc=superclasses([packageName,fn]);
-                        if(any(strcmp(sprc,'Device')))
-                            cnames{end+1}=[packageName,fn];
+                        try                            
+                            sprc=superclasses([packageName,fn]);
+                            if(any(strcmp(sprc,'Device')))
+                                cnames{end+1}=[packageName,fn];
+                            end
+                        catch
                         end
                     end
                 end

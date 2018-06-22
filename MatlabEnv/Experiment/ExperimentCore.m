@@ -18,6 +18,10 @@ classdef ExperimentCore < Expose.Expose
     % message handlers for the specific command.
     methods (Access = protected)
         function [o]=GetHandler(obj,id,e)
+            o=[];
+            if(~isvalid(obj))
+                return;
+            end
             import Expose.Core.*;
             if(exist('id','var'))
                 % keeping the current alive since we recived a request for

@@ -12,6 +12,7 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
         IgnoreErrors=false;
         AccumilatedOffsetWarningTime=1000;
         UseAccumilatedTickCountForTime=true;
+        
     end
     
     properties (SetAccess = protected)
@@ -24,6 +25,8 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
         WaitStatus=0;
         LastError=-1;
         LastErrorTimestamp=-1;
+        IsGradient=false;
+        FirstGradientValueAsBaseline=true;
     end
     
     properties (Access = private)
@@ -31,6 +34,8 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
         m_eventDataStruct=DAQEventStruct;
         m_lastWaitTime=-1;
         m_waitCount=1;
+        m_LastMeasuredGradientValue=0;
+        
     end
 
     properties (Access=protected)
@@ -84,6 +89,7 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
     properties(Access = private)
         m_processDataEventDispatch=[];
         m_processDataEventDispatchWaiting={};
+        m_isProcessingDataBatch=false;
     end
     
     % async data processing.
@@ -95,7 +101,7 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
                     @obj.processWaitingDataBatches);
             end
             obj.m_processDataEventDispatchWaiting{end+1}=dbatch;
-            obj.m_processDataEventDispatch.trigger(1);
+            obj.m_processDataEventDispatch.trigger(10);
             %obj.processWaitingDataBatches([],[]);
         end
         
@@ -104,16 +110,15 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
                 obj.FirstDataBatchTimestamp=now;
                 obj.m_LastAccumilatedOffset=0;
             end
-            
+
             if(isempty(obj.m_processDataEventDispatchWaiting))
                 return;
             end
             
-            accumTimeOffset=int32(obj.secondsToTimebase(...
-                (now-obj.FirstDataBatchTimestamp)*24*60*60));
-            
+            obj.m_isProcessingDataBatch=true;
             dbatches=obj.m_processDataEventDispatchWaiting;
             obj.m_processDataEventDispatchWaiting={};
+            
             % collecitng the data.
             dlen=0;
             columns=1;
@@ -146,6 +151,26 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
                 ts=ts./(obj.ClockRatio*obj.timeUnitsToSecond);                    
             end
             
+            if(~iscolumn(data))
+                data=data';
+            end
+            
+            if(obj.IsGradient)
+                lastVal=data(end);
+                if(isempty(obj.m_LastMeasuredGradientValue))
+                    if(length(ts)==1)
+                        data=[];
+                        ts=[];
+                    else
+                        data=diff(data);
+                        ts=ts(2:end);
+                    end
+                else
+                    data=diff([obj.m_LastMeasuredGradientValue;data]);
+                end
+                obj.m_LastMeasuredGradientValue=lastVal;
+            end
+            
             % processing the current.
             ev=DAQEventStruct();
             ev.RawData=data;
@@ -174,6 +199,8 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
                 end
             end
             
+            obj.m_isProcessingDataBatch=false;
+            
             if(~isempty(obj.m_processDataEventDispatchWaiting))
                 obj.m_processDataEventDispatch.trigger(1);
             end
@@ -182,12 +209,20 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
     
     % Event functions
     methods
+        function forceMeasurementTrigger(obj)
+            obj.m_processDataEventDispatch.trigger(1);
+        end
         % binds a lister to the data ready event.
         function initInternalTime(obj)
             obj.ProceesedCount=0;
             obj.FirstDataBatchTimestamp=-1;
             obj.TickCount=0;
             obj.InitizliedTimestamp=now;
+            if(obj.FirstGradientValueAsBaseline)
+                obj.m_LastMeasuredGradientValue=[];
+            else
+                obj.m_LastMeasuredGradientValue=0;
+            end
             if(obj.ClockRatio<0)
                 obj.ClockRatio=1;
             end

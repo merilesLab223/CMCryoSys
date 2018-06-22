@@ -3,13 +3,21 @@ classdef BinEventStruct < EventStruct
     %   Detailed explanation goes here
     
     properties
-        BinIndex;
+        BinIndexs;
+    end
+    
+    properties(SetAccess = private)
+        BinCount;
     end
     
     methods
-        function obj = BinEventStruct(binIndex,binData)
+        function [c]=get.BinCount(ev)
+            c=length(ev.BinIndexs);
+        end
+        
+        function obj = BinEventStruct(binIndexs,binData)
             obj.Data=binData;
-            obj.BinIndex=binIndex;
+            obj.BinIndexs=binIndexs;
         end
     end
 end
