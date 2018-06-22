@@ -101,8 +101,8 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
                     @obj.processWaitingDataBatches);
             end
             obj.m_processDataEventDispatchWaiting{end+1}=dbatch;
-            obj.m_processDataEventDispatch.trigger(10);
-            %obj.processWaitingDataBatches([],[]);
+            %obj.m_processDataEventDispatch.trigger(10);
+            obj.processWaitingDataBatches([],[]);
         end
         
         function processWaitingDataBatches(obj,s,e)

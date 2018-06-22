@@ -57,6 +57,46 @@ classdef StepBinCollector < DataStream
             col.CollectBins=repmat(col.CollectBins,1,n);
         end
         
+        function merge(col,startIdx,endIdx,invokeEvent,loopn)
+            % combines the data collections into a single collection value.
+            % the combined collection data will behave as a single data
+            % bin.
+            
+            if(~exist('startIdx','var') || isempty(startIdx))
+                startIdx=1;
+            end
+            if(~exist('loopn','var') || isempty(loopn))
+                loopn=1;
+            end
+            % end index.
+            if(~exist('endIdx','var') || isempty(endIdx))
+                endIdx=length(col.CollectBins);
+            end
+            
+            if(startIdx>length(col.CollectBins))
+                error('Start index out of bounds.');
+            end
+            
+            binsToMerge=col.CollectBins(startIdx:endIdx);
+            
+            flags=[];
+            invokeEvents=[];
+            for i=1:length(binsToMerge)
+                bi=binsToMerge{i};
+                bf=repmat(bi.flags,1,bi.n);
+                flags(end+1:end+length(bf))=bf;
+                invokeEvents(end+1)=bi.invoke;
+            end
+            
+            if(~exist('invokeEvent','var'))
+                invokeEvent=any(logical(invokeEvents));
+            end
+            
+            nbin=StepBinCollector.makeBinDataFromFlags(invokeEvent,flags,loopn);
+            col.CollectBins{startIdx}=nbin;
+            col.CollectBins(startIdx+1:endIdx)=[];
+        end
+        
         function clear(col)
             % clear all the meausurement bins.
             col.CollectBins={};
@@ -73,11 +113,11 @@ classdef StepBinCollector < DataStream
         function prepare(col)
             prepare@DataStream(col);
             col.reset();
-            
         end
     end
     
     methods(Static, Access = protected)
+        
         function [b]=makeBinData(invokeEvent,cnt,isdata,loopn)
             % making the src flags.
             flags=[];
@@ -88,8 +128,12 @@ classdef StepBinCollector < DataStream
                     flags(end+1:end+cnt(i))=zeros(cnt(i),1);
                 end
             end
-            b=struct('invoke',invokeEvent,'flags',logical(flags),'total',...
-                length(flags),'n',loopn);
+            b=StepBinCollector.makeBinDataFromFlags(invokeEvent,flags,loopn);
+        end
+        
+        function [b]=makeBinDataFromFlags(invokeEvent,flags,loopn)
+            b=struct('invoke',logical(invokeEvent),'flags',logical(flags),'total',...
+                length(flags),'n',double(loopn));            
         end
     end
     
@@ -107,11 +151,10 @@ classdef StepBinCollector < DataStream
         function dataBatchAvailableFromDevice(col,s,e)
             % pushing the data into the pending.
             col.PendingData(end+1:end+length(e.RawData))=e.RawData;
-            lpending=length(col.PendingData);
-            tic;
+%             tic;
             [cidxs,cdata]=col.processData();
-            disp(['Processed ',num2str(lpending-length(col.PendingData)),' in [ms] ',...
-                num2str(toc)]);
+%             disp(['Processed ',num2str(lpending-length(col.PendingData)),' in [ms] ',...
+%                 num2str(toc)]);
             
             if(~isempty(cidxs))
                 ev=BinEventStruct(cidxs,cdata);

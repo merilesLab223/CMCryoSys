@@ -165,8 +165,8 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
         
         function [dur]=getTotalDuration(obj)
             % slow version.
-            [~,t]=obj.getTTLVectors();
-            dur=max(t);
+            [t,strm]=obj.getTimedStream();
+            dur=TTLGenerator.f_sGetStreamDuration(t,strm);
         end
 
         function [ttl,t]=getTTLVectors(obj,loopTypeFilter)
@@ -196,7 +196,7 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
             end
             li=obj.LOOPStartStruct;
             li.looptype=ltype;
-            li.n=n;
+            li.n=double(n);
             obj.SetTimedEvent(obj.curT,li);
             curT=obj.curT;
         end
@@ -208,6 +208,7 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
     end
     
     methods(Static, Access = protected)
+        
         function [ttl,durs]=f_sStreamToTTLVectors(st,strm,loopTypeFilter)
             doLoopFiltering=iscell(loopTypeFilter);
             durs=[];
@@ -219,6 +220,7 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
                 if(isstruct(si))
                     % event struct.
                     if(~isfield(si,'type'))
+                        idx=idx+1;
                         continue;
                     end
                     
@@ -246,6 +248,7 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
                         case 'loopend'
                             error('reached loopend without a loop start.');
                         otherwise
+                            idx=idx+1;
                             continue;
                     end
                 end
@@ -261,6 +264,41 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
                 idx=idx+1;
             end
             durs=durs';
+        end
+        
+        function [dur]=f_sGetStreamDuration(t,strm)
+            lstrm=length(strm);
+            idx=1;
+            dur=0;
+            while(idx<=lstrm)
+                si=strm{idx};
+                
+                if(isstruct(si))
+                    % event struct.
+                    if(~isfield(si,'type'))
+                        idx=idx+1;
+                        continue;
+                    end
+                    
+                    switch(si.type)
+                        case 'loopstart'
+                            eidx=TTLGenerator.f_sFindStreamLoopEnd(idx+1,strm);
+                            [ldur]=TTLGenerator.f_sGetStreamDuration(...
+                                t(idx+1:eidx-1),strm(idx+1:eidx-1));
+                            dur=dur+ldur*si.n;
+                            idx=eidx+1;
+                            continue;
+                        case 'loopend'
+                            error('reached loopend without a loop start.');
+                        otherwise
+                            idx=idx+1;
+                            continue;
+                    end
+                end
+                
+                dur=dur+sum(si(:,1)); % total duration.
+                idx=idx+1;
+            end
         end
         
         function [idx]=f_sFindStreamLoopEnd(idx,strm)

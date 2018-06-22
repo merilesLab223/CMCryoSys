@@ -140,10 +140,7 @@ classdef Rabi<Experiment
             
             fgen=exp.FGen;
             gate=exp.Gate;
-            
-            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-            % clearing the scan results if needed.
-            exp.resetResultsCollection();
+
 
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % Configgure devices.
@@ -151,7 +148,11 @@ classdef Rabi<Experiment
             
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % Configuring the measurement
-            [crate,chunkn]=exp.configureMeasurement();
+            [crate,chunkn,durs]=exp.configureMeasurement();
+            
+            %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+            % clearing the scan results if needed.
+            exp.resetResultsCollection(durs);
             
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % calcilating the clock rate appropriate for the current
@@ -164,7 +165,7 @@ classdef Rabi<Experiment
             gate.setClockRate(300e6);
             exp.Reader.setClockRate(crate);
             exp.Reader.IsContinuous=false;
-            exp.Reader.Duration=gate.getTotalDuration();
+            exp.Reader.Duration=gate.getTotalDuration()+100;
             exp.Reader.SetMaxReadChunkSize(chunkn);
             
             % updating the display.
@@ -242,7 +243,7 @@ classdef Rabi<Experiment
             end
         end
         
-        function [crate,chunkn]=configureMeasurement(exp)
+        function [crate,chunkn,durs]=configureMeasurement(exp)
             %configureMeasurement configure the gate and measurement
             %collector for the measurement.
             %   dur - measurement point duration.
@@ -275,13 +276,16 @@ classdef Rabi<Experiment
             dur_readT=exp.TimeProperties.ReadT*1e-3;
             dur_waitReferenceT=exp.TimeProperties.WaitForReferenceT*1e-3;
             dur_afterMEasurement=exp.TimeProperties.WaitAfterMeasurement*1e-3;
+            dur_mdelay=exp.TimeProperties.LaserDelay*1e-3;
+            dur_readPulse=dur_m/2;
             
             % start sequence.
             gate.clear(); % remove all previous instructions. cutT=0;
             col.clear(); % clear instruction to the collector.
             gate.Down([c_fg,c_rf,c_l,c_m]);
-            % start the counter measure.
-            %gate.Pulse(dur_p,dur_p,c_m);
+            
+            % start the counter measure (the dummy idle count).
+            gate.Pulse(dur_p,dur_p,c_m);
             gate.curT=0;
             
             % wait a bit to allow for
@@ -317,29 +321,30 @@ classdef Rabi<Experiment
                 % doing the read + refrence
                 for wdt=[dur_waitAfterPi,dur_waitReferenceT]
                     gate.wait(wdt);
-
                     if(exp.SystemConfig.UseLaser)
                         gate.Pulse(dur_readLaserT,dur_p,c_l);
                         gate.goBackInTime(dur_readLaserT+dur_p);
                     end
-
+                    
+                    gate.wait(dur_mdelay);
+                    
                     % cleanup for counter.
                     if(~exp.IsReadingAnalog)
                         col.skip(1);
-                        gate.Pulse(dur_p,dur_p,c_m);
-                        gate.goBackInTime(dur_p*2);
+                        gate.Pulse(dur_readPulse,dur_p,c_m);
+                        gate.goBackInTime(dur_readPulse+dur_p);
                     end
 
                     % measuring data.
                     col.collect(exp.ReaderProperties.BinsPerFreq);
                     for j=1:exp.ReaderProperties.BinsPerFreq
                         gate.wait(dur_m);
-                        gate.Pulse(dur_p,dur_p,c_m);
-                        gate.goBackInTime(dur_p*2);
+                        gate.Pulse(dur_readPulse,dur_p,c_m);
+                        gate.goBackInTime(dur_readPulse+dur_p);
                     end
 
                     if(dur_readLaserT>dur_readT)
-                        gate.wait(dur_readLaserT-dur_readT);
+                        gate.wait(dur_readLaserT-dur_readT-dur_mdelay);
                     end
                 end
                 
@@ -347,8 +352,8 @@ classdef Rabi<Experiment
             end
             
             gate.EndLoop();
-            
-            col.repeate(exp.ScanProperties.RepCount);
+            col.merge(1,[],true,exp.ScanProperties.RepCount);
+            %col.repeate(exp.ScanProperties.RepCount);
             
             % rf off.
             if(exp.SystemConfig.UseRF)
@@ -362,15 +367,16 @@ classdef Rabi<Experiment
             singleReadTime=gate.curT./double(totalReadsPerRound);
 
             chunkn=ceil(100/singleReadTime); % read at leaset 20 ms before return value.
-            if(chunkn>totalReads)
-                chunkn=totalReads;
-            elseif(chunkn<1)
+            if(chunkn>totalReads/2)
+                chunkn=totalReads/2;
+            end
+            if(chunkn<1)
                 chunkn=1;
             end
             
             % give it one more chunk n.
             gate.wait(dur_p);
-            gate.StartLoop(chunkn);
+            gate.StartLoop(100);
             gate.Pulse(dur_p,dur_p,c_m);
             gate.EndLoop();
         end  
@@ -400,23 +406,16 @@ classdef Rabi<Experiment
     
     methods(Access = protected)
         
-        function resetResultsCollection(exp)
-            step=(exp.ScanProperties.PiEndT-exp.ScanProperties.PiStartT)/...
-                exp.ScanProperties.N;
-            
-            if(exp.Results.StartOffset~=exp.ScanProperties.PiStartT||...
-                exp.Results.N~=exp.ScanProperties.N||...
-                exp.Results.StepSize~=step || ... 
-                ~isfield(exp.Results,'Amps') || ~isfield(exp.Results,'Reference'))
-                exp.Results.Amps=[];
-                exp.Results.Reference=[];
-            end
-            
+        function resetResultsCollection(exp,durs)
+            dt=(exp.ScanProperties.PiEndT-exp.ScanProperties.PiStartT)/...
+                (exp.ScanProperties.N-1);
+
+            exp.Results.Amps=[];
+            exp.Results.Reference=[];
             exp.Results.StartOffset=exp.ScanProperties.PiStartT;
             exp.Results.N=exp.ScanProperties.N;
-            exp.Results.StepSize=step;
-            exp.Results.Times=1.e-3*...
-                exp.ScanProperties.PiStartT:step:exp.ScanProperties.PiEndT;
+            exp.Results.StepSize=dt;
+            exp.Results.Times=exp.Results.StartOffset+(0:exp.ScanProperties.N-1)*dt;
             exp.LastBinIndex=1;
         end
         
@@ -444,80 +443,59 @@ classdef Rabi<Experiment
     % process data results.
     methods (Access = protected)
         function binComplete(exp,s,e)
-            bidx=exp.LastBinIndex;
+            
             totalCount=exp.ScanProperties.RepCount;
             curPending=exp.PendingRepetitionCount;
-            strm=exp.Stream;
+
+            % all the results.
             rslts=exp.Results;
-            readTime=exp.TimeProperties.ReadT*1e-3;
             isavg=exp.ScanProperties.DoAvg;
             isana=exp.IsReadingAnalog;
             
-            for i=1:e.BinCount
-                if(bidx>exp.ScanProperties.N*2)
-                    bidx=1;
-                    curPending=curPending-1;
-                end                
-                [strm,rslts]=exp.processNextBin(rslts,readTime,isavg,isana,...
-                    bidx,e.Data{i},totalCount-curPending);
-                bidx=bidx+1;
-            end
+            % each bin is a full rabi scan (over all points)
+            % therefore...
             
-            exp.Results=rslts;
-            exp.Stream=strm;
-            exp.MeanStreamVal=mean(strm);
+            for i=1:e.BinCount
+                doneCount=double(totalCount-curPending);
+                data=e.Data{i};
+                amps=data(1:2:end-1);
+                refs=data(2:2:end);
+                
+                % reshaping to the number of measurement per data
+                % value.
+                amps=reshape(amps,...
+                    floor(length(amps)./exp.ReaderProperties.BinsPerFreq)...
+                    ,exp.ReaderProperties.BinsPerFreq);
+                refs=reshape(refs,...
+                    floor(length(refs)./exp.ReaderProperties.BinsPerFreq)...
+                    ,exp.ReaderProperties.BinsPerFreq);                
+                if(isana)
+                    refs=mean(refs,2);
+                    amps=mean(amps,2);
+                else
+                    refs=sum(refs,2);
+                    amps=sum(amps,2);
+                end
+                
+                if(isavg && length(rslts.Amps)==length(amps))
+                    amps=...
+                        (rslts.Amps*doneCount)./(doneCount+1)+amps./(doneCount+1);
+                    rslts.Amps=amps;
+                    refs=...
+                        rslts.Reference.*doneCount./(doneCount+1)+refs./(doneCount+1);
+                    rslts.Reference=refs;                    
+                else
+                    rslts.Amps=amps;
+                    rslts.Reference=refs;
+                end
+                
+                curPending=curPending-1;
+            end
             exp.PendingRepetitionCount=curPending;
-            exp.LastBinIndex=bidx;
+            exp.Results=rslts;
+            
             exp.update({'MeanStreamVal','Stream',...
                 'Results','PendingRepetitionCount','LastBinIndex'});
-        end
-        
-        function [strm,rslts]=processNextBin(exp,rslts,isavg,isana,rtime,bidx,data,repDone)
-            isRef=~mod(bidx,2);
-            
-            amps=0;
-            if(isempty(data))
-                strm=[];
-            else
-                strm=data;
-                if(isana)
-                    amps=mean(data);
-                else
-                    if(rtime>0)
-                        amps=sum(data)/rtime;
-                    else
-                        amps=sum(data);
-                    end
-                end
-            end
-            
-            repDone=double(repDone);
-            
-            if(isavg)
-                oldAmps=[];
-                if(repDone>0)
-                    if(isRef)
-                        if(length(rslts.Reference)>=bidx)
-                            oldAmps=rslts.Reference(bidx);
-                        end
-                    else
-                        if(length(rslts.Amps)>=bidx)
-                            oldAmps=rslts.Amps(bidx);
-                        end
-                    end
-                end
-
-                if(~isempty(oldAmps))
-                    amps=...
-                        oldAmps*repDone./(repDone+1)+amps./(repDone+1);
-                end
-            end
-            
-            if(isRef)
-                rslts.Reference(bidx/2)=amps;
-            else
-                rslts.Amps((bidx+1)/2)=amps;    
-            end         
         end
         
         function measurementComplete(exp,s,e)
