@@ -413,6 +413,7 @@ classdef ImageScan < Experiment
             % set is working.
             exp.IsWorking=false;
             
+            
             % update the rf channels if needed.
             exp.IsRFChanOpen=exp.IsRFChanOpen;
             exp.IsLaserChanOpen=exp.IsLaserChanOpen;
@@ -502,7 +503,6 @@ classdef ImageScan < Experiment
             if(~exist('doUpdate','var'))
                 doUpdate=true;
             end
-            tic;
             exp.ScanImage=img;
             simg=size(exp.ScanImage);
             exp.ImageProperties.Xn=simg(1);
@@ -522,10 +522,10 @@ classdef ImageScan < Experiment
                 exp.ImageProperties.max=0;
                 exp.ImageProperties.med=0;
             end
+            
             %disp(['Update image dt: ',num2str(toc)]);
             if(doUpdate)   
-                exp.update('ImageProperties',false);
-                exp.update('ScanImage');
+                exp.update({'ScanImage','ImageProperties'});
             end
         end
         
@@ -535,7 +535,7 @@ classdef ImageScan < Experiment
                 'IsScanning',false,...
                 'IsSettingPosition',false,...
                 'PossibleLossOfData',false...
-                );            
+                );
         end
     end
     
@@ -678,6 +678,7 @@ classdef ImageScan < Experiment
             exp.StreamDataCollector.UpdateDT=exp.StreamConfig.UpdateTime;
             exp.StreamDataCollector.CollectDT=exp.StreamConfig.CollectionWindow;
             exp.StreamDataCollector.PadZeros=exp.StreamConfig.PadWithZeros;
+            exp.StreamDataCollector.IntegrationTime=exp.StreamConfig.IntegrationTime;
             
             % adding callback.
             exp.StreamDataCollector.setClockRate(clockrate);            
@@ -694,18 +695,16 @@ classdef ImageScan < Experiment
             end
             
             scol=exp.StreamDataCollector;
-            [data,dt]=scol.getData();
-            if(isempty(data))
-                return;
-            end
-            
             exp.ReaderAmplitude=scol.MeanV;
-            
-            [~,strm]=...
-                StreamToTimedData(data,exp.StreamConfig.IntegrationTime,dt);
+            [strm,dt]=scol.getData();
+%             if(isempty(data))
+%                 return;
+%             end            
+%             [~,strm]=...
+%                 StreamToTimedData(data,exp.StreamConfig.IntegrationTime,dt);
             exp.StreamTrace=uint16(strm);
+            
             exp.update({'StreamTrace','ReaderAmplitude'});
-    
             if(exp.IsSavingStreamToFile && ~isempty(exp.StreamStorageFile))
                 strm=[e.TimeStamps,e.Data];
                 lt=length(e.TimeStamps);
@@ -944,7 +943,7 @@ classdef ImageScan < Experiment
             if(~isa(exp.ScanDataCollector,'TimeBinCollector'))
                 return;
             end
-            exp.ProcessScanResults(exp.ScanDataCollector.Results,...
+            exp.ProcessScanResults(e.Data,...
                exp.ScanDataCollector.CompleatedPercent);
         end
         
@@ -958,9 +957,9 @@ classdef ImageScan < Experiment
             exp.setScanImage(img);
             exp.ScanProgress=comp;
             exp.update({'ScanProgress'});
-            if(~isempty(exp.m_activeTempFile))
-                
-            end
+%             if(~isempty(exp.m_activeTempFile))
+%                 
+%             end
         end
         
         function OnScanDataComplete(exp,s,e)

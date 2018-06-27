@@ -3,6 +3,8 @@ classdef ODMR<Experiment
     %getExp returns the last created experiment.
     
     methods
+        function obj=ODMR(varargin)
+        end
     end
 
     %defining new devices.
@@ -100,6 +102,7 @@ classdef ODMR<Experiment
         end
         
         function runODMR(exp)
+            exp.stop();
             exp.IsWorking=true;
             
             % setting the function generator properties.

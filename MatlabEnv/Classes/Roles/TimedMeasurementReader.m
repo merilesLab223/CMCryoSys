@@ -35,7 +35,6 @@ classdef TimedMeasurementReader < handle & TimeBasedObject
         m_lastWaitTime=-1;
         m_waitCount=1;
         m_LastMeasuredGradientValue=0;
-        
     end
 
     properties (Access=protected)

@@ -7,6 +7,7 @@ classdef DeviceCollection < handle
         function obj = DeviceCollection()
             obj.deviceByName=containers.Map;
             obj.roleFiltersByName=containers.Map;
+            obj.eventRegisterByName=containers.Map;
             
             obj.addRole('Positioner2D',...
                 @(n,d)DeviceCollection.ClassRoleFilter(n,d,'Positioner2D'));
@@ -19,7 +20,17 @@ classdef DeviceCollection < handle
     
     properties (Access = protected)
         deviceByName=[];
+        eventRegisterByName={};
         roleFiltersByName=[];
+    end
+    
+    events
+        DeviceStopped;
+        DeviceStarted;
+    end
+    
+    properties
+        RegisterDeviceEvents=false;
     end
     
     % collection methods
@@ -52,10 +63,34 @@ classdef DeviceCollection < handle
         
         function set(col,name,dev)
             % sets the device by the name.
+            if(col.deviceByName.isKey(name) && col.deviceByName(name)==dev)
+                return;
+            end
+            col.remove(name);
             col.deviceByName(name)=dev;
             if(isempty(dev.name))
                 dev.name=name;
             end
+            if(col.RegisterDeviceEvents)
+                col.registerForEvents(name,dev);
+            end
+        end
+        
+        function registerForEvents(col,name,dev)
+            if(col.eventRegisterByName.isKey(name))
+                col.unregisterForEvents(name);
+            end            
+            dev.addlistener('Stopped',@col.onDeviceEventStopped);
+            dev.addlistener('Started',@col.onDeviceEventStarted);
+        end
+        
+        function unregisterForEvents(col,name)
+            if(~col.eventRegisterByName.isKey(name))
+                return;
+            end
+            evar=col.eventRegisterByName(name);
+            col.eventRegisterByName.remove(name);
+            delete(evar);            
         end
         
         function remove(col,name)
@@ -64,6 +99,7 @@ classdef DeviceCollection < handle
                 return;
             end
             col.deviceByName.remove(name);
+
         end
         
         function varargout = subsref(col,id)
@@ -75,10 +111,19 @@ classdef DeviceCollection < handle
                    error('DeviceCollection:subsref',...
                       'Not a supported subscripted reference');
                 otherwise
-                    did=id.subs{1};                     
+                    did=id.subs{1};
                     varargout{1}=col.get(did);
             end
-        end        
+        end
+    end
+    
+    methods(Access = private)
+        function onDeviceEventStopped(col,s,e)
+            col.notify('DeviceStopped',e);
+        end
+        function onDeviceEventStarted(col,s,e)
+            col.notify('DeviceStarted',e);
+        end
     end
     
     %roles methods

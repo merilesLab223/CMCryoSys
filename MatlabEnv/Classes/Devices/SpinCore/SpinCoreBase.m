@@ -97,6 +97,7 @@ classdef SpinCoreBase < Device & TimeBasedObject
         function []=stop(obj)
             api=obj.CoreAPI;
             api.Stop();
+            stop@Device(obj);
         end
         
         function []=prepare(obj)
@@ -108,6 +109,7 @@ classdef SpinCoreBase < Device & TimeBasedObject
         function []=run(obj)
             api=obj.CoreAPI;
             api.Start();
+            run@Device(obj);
         end
         
         function [cflags]=ChannelValToFlags(obj,c,val)

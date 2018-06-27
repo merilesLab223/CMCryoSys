@@ -111,7 +111,7 @@ classdef TimeBinCollector < DataStream
             % processing the bin data.
             try
                 [ridxs,rslts]=obj.processBinData();
-                if(~isempty(rslts))                
+                if(~isempty(rslts))      
                     % updating state
                     lbin=numel(obj.MeasureBins);
                     lpend=numel(obj.m_pendingBins);

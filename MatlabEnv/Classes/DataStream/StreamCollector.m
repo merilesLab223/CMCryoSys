@@ -16,6 +16,7 @@ classdef StreamCollector< handle & DataStream
         CollectDT=3000; % in timebase.
         UpdateDT=100; % in timebase.
         PadZeros=false; % in timebase.
+        IntegrationTime=1; % in timebase.
     end
     
     properties (SetAccess = protected)
@@ -24,6 +25,7 @@ classdef StreamCollector< handle & DataStream
         Timestamps=[0;0];
         LastReadTimestamp=-1;
         LastUpdateTimestamp=-1;
+        LastStartedTimestamp=-1;
     end
     
     properties (Access = protected)
@@ -73,6 +75,11 @@ classdef StreamCollector< handle & DataStream
             end
         end
         
+        function [data,t]=getRawData(obj)
+            data=obj.StreamData;
+            t=obj.StreamT;
+        end
+        
         function [rslt]=getResultsMatrix(obj)
             rslt=[];
             rslt(:,1)=obj.StreamT;
@@ -86,6 +93,7 @@ classdef StreamCollector< handle & DataStream
                 return;
             end
             
+            % collect current data.
             ts=obj.BatchT;
             data=obj.BatchData;
             
@@ -103,32 +111,40 @@ classdef StreamCollector< handle & DataStream
                 data(end+1:end+dlen,:)=e.Data;
             end
             
+            % last mean value collected for read batch.
             obj.MeanV=mean(data,1);
             
+            % if still empty.
             if(isempty(ts))
                 % finding the locaiton where to slice.
                 data=[];
                 ts=[];
             end
             
+            % reset the data back.
             obj.BatchT=ts;
             obj.BatchData=data;      
             
+            % process the current.
+            obj.processCurrentData(e);
+        end
+        
+        function processCurrentData(obj,e)
             curT=obj.nowInTimebase();
             obj.LastReadTimestamp=curT;
             if(curT-obj.LastUpdateTimestamp>obj.UpdateDT)
-                bt=obj.BatchT;
-                bd=obj.BatchData;
-                obj.BatchT=[];
-                obj.BatchData=[];
-                
-                lt=length(bt);
-                obj.StreamT(end+1:end+lt)=bt;
-                obj.StreamData(end+1:end+lt,:)=bd;
-                
-                [obj.StreamT,obj.StreamData]=...
-                    obj.SliceToOffset(obj.StreamT,obj.StreamData);
-
+%                 bt=obj.BatchT;
+%                 bd=obj.BatchData;
+%                 obj.BatchT=[];
+%                 obj.BatchData=[];
+%                 
+%                 lt=length(bt);
+%                 obj.StreamT(end+1:end+lt)=bt;
+%                 obj.StreamData(end+1:end+lt,:)=bd;
+%                 
+%                 [obj.StreamT,obj.StreamData]=...
+%                     obj.SliceToOffset(obj.StreamT,obj.StreamData);
+                [bt,bd]=obj.processCurrentBatchToIntegratedStream();
                 obj.LastUpdateTimestamp=curT;
                 ev=DAQEventStruct();
                 ev.Data=bd;
@@ -138,10 +154,50 @@ classdef StreamCollector< handle & DataStream
                 ev.TotalTicksSinceStart=e.TotalTicksSinceStart;
                 ev.AccumilatedClockOffset=e.AccumilatedClockOffset;
                 obj.notify('DataReady',ev);
-            end
+            end            
         end
         
+        function [bt,bdata]=processCurrentBatchToIntegratedStream(obj)
+            bt=obj.BatchT;
+            bdata=obj.BatchData; 
+            if(isempty(bt))
+                return;
+            end
+            
+            % splicing to integration time.
+            if(length(bt)>1)            
+                intT=obj.IntegrationTime;
+                maxT=floor(double(bt(end)-bt(1))/double(intT))...
+                    *intT;
+                if(maxT==0)
+                    return;
+                end
+                [~,maxIdx]=min(abs(bt-maxT-bt(1)));
+                if(maxIdx==1)
+                    return;
+                end
+                obj.BatchT=bt(maxIdx+1:end);
+                obj.BatchData=bdata(maxIdx+1:end);            
+                bt=bt(1:maxIdx);
+                bdata=bdata(1:maxIdx);
+                t0=bt(1);
+                [bt,bdata]=StreamToTimedData(bdata,obj.IntegrationTime,bt(2)-bt(1));
+                bt=bt+t0;
+            end
+            if(isempty(bt))
+                return;
+            end
+            lt=length(bt);
+            obj.StreamT(end+1:end+lt)=bt;
+            obj.StreamData(end+1:end+lt,:)=bdata;
+            [obj.StreamT,obj.StreamData]=...
+                obj.SliceToOffset(obj.StreamT,obj.StreamData);    
+        end        
+        
         function [ts,data]=SliceToOffset(obj,ts,data)
+            if(isempty(ts))
+                return;
+            end
             offset=(ts(end)-obj.CollectDT); % from end
             idxs=find(ts>offset);
 %             idxs=idxs(idxs<=length(data));

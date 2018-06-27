@@ -110,6 +110,7 @@ classdef NI6321Core < Device & TimeBasedObject
             end
             %wait(s);
             obj.LastStopTime=now;
+            stop@Device(obj);
         end
         
         function [rslt]=hasExternalClock(obj)
@@ -243,6 +244,7 @@ classdef NI6321Core < Device & TimeBasedObject
     methods
         % Call to run.
         function []=run(obj)
+            
             s=obj.niSession;
             if(s.IsRunning)
                 disp('Called run on an already running session.');
@@ -255,6 +257,7 @@ classdef NI6321Core < Device & TimeBasedObject
                     error('Timeout while trying to start the session.');
                 end
             end
+            run@Device(obj);
         end
         
         function []=prepare(obj,doStop)
@@ -263,14 +266,18 @@ classdef NI6321Core < Device & TimeBasedObject
             end
             % call parent prepare.
             prepare@Device(obj);
-            if(doStop)
+            s=obj.niSession;
+            if(doStop || obj.IsRunning)
                 obj.stop();
             end
-            s=obj.niSession;
-            s.release(); % release previous resources.
-            s.Rate=obj.Rate;
-            obj.makeTriggerTerms();
-            obj.makeExternalClockTerms();
+            if(~s.IsRunning)
+                s.release(); % release previous resources.
+                s.Rate=obj.Rate;
+                obj.makeTriggerTerms();
+                obj.makeExternalClockTerms();                
+            else
+                warning('Session was not stopped though stop function called.');
+            end
         end
         
         function [data]=single(obj)

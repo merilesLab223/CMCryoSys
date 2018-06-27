@@ -4,19 +4,6 @@ classdef SpinCoreAPI < DllAPI
         % Spincore library config.
 		function [obj] = SpinCoreAPI(varargin)
             obj@DllAPI(varargin{:});
-%             if(~exist('LibraryFile','var'))LibraryFile=SpinCoreAPI.DefaultLibFile;end
-%             if(~exist('LibraryHeader','var'))LibraryHeaders=SpinCoreAPI.DefaultHeaderFiles;end
-%             if(~exist('LibraryName','var'))LibraryName=SpinCoreAPI.DeafultLibName;end
-%             
-%             if(ischar(LibraryHeaders))
-%                 LibraryHeaders={LibraryHeaders};
-%             end
-%             obj.LibraryFile = LibraryFile;
-%             obj.LibraryHeaders = LibraryHeaders;
-%             obj.LibraryName = LibraryName;
-%             
-%             obj.Load();
-%             obj.Init();
         end
     end    
     

@@ -16,9 +16,6 @@ classdef ANC350 < Device
         function [api]=get.Api(dev)
             api=dev.GetAPI();
         end
-        
-        function run(dev)
-        end
     end
     
     methods (Access = protected)

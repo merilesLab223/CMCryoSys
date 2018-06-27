@@ -67,9 +67,6 @@ classdef ANC300Base < Device & TCPDevice
             % call core prepare.
             prepare@Device(dev);
         end
-        
-        function run(dev)
-        end
     end
     
     % lua methods

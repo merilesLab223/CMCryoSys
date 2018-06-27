@@ -46,6 +46,7 @@ classdef DllAPI < handle
                         arglst{end+1}=hdr;
                     end
                 end
+                
                 [notfound,warnings]=loadlibrary(arglst{:});
                 if(~isempty(warnings))
                     warning(warnings);

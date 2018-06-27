@@ -31,6 +31,7 @@ classdef RohdeSchwarzBase < Device & TCPDevice
         
         function run(dev)
             % dose nothing now.
+            run@Device(dev);
         end
         
         function registerDeviceProperty(dev,query,parseStr,propertyName...

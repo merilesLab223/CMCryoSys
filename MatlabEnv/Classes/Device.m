@@ -9,6 +9,8 @@ classdef Device < handle
     
     events
         DeviceConfigured;
+        Stopped;
+        Started;
     end
     
     properties
@@ -64,13 +66,18 @@ classdef Device < handle
         
         % general function stop.
         function stop(dev)
+            dev.notify('Stopped',EventStruct());
+        end
+        
+        function []=run(dev)
+            dev.notify('Started',EventStruct());
         end
     end
     
-    methods (Abstract)
-        % called to run the current device implementation and sequence.
-        []=run(obj); % must override to create a device.
-    end
+%     methods (Abstract)
+%         % called to run the current device implementation and sequence.
+%         []=run(obj); % must override to create a device.
+%     end
     
     methods (Abstract, Access = protected)
         % The call to configure. This call is the first of many calls.

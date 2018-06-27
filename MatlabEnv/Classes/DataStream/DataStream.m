@@ -11,8 +11,7 @@ classdef DataStream < handle & TimeBasedObject
             
             %obj.reader=reader;
             % binding the event listener.
-            obj.DataReadyEventListner=...
-                reader.addlistener('DataReady',@obj.dataBatchAvailableFromDevice);
+            obj.Reader=reader;
             if(isrunning)
                 obj.start();
             else
@@ -23,6 +22,7 @@ classdef DataStream < handle & TimeBasedObject
     
     properties (SetAccess = protected)
         IsRunning=0;
+        Reader=[];
     end
     
     properties (Access = protected)
@@ -39,29 +39,36 @@ classdef DataStream < handle & TimeBasedObject
         function delete(obj)
             try
                 obj.stop();
-                delete(obj.DataReadyEventListner);
+                %delete(obj.DataReadyEventListner);
             catch err
             end
         end
         
         function start(obj)
             obj.IsRunning=1;
-            if(isvalid(obj.DataReadyEventListner))
-                obj.DataReadyEventListner.Enabled=1;
-            end
+            obj.deleteActiveEventListener();
+            obj.DataReadyEventListner=...
+                obj.Reader.addlistener('DataReady',@obj.dataBatchAvailableFromDevice);
         end
         
         function stop(obj)
             obj.IsRunning=0;
-            if(isvalid(obj.DataReadyEventListner))
-                obj.DataReadyEventListner.Enabled=0;
-            end
+            obj.deleteActiveEventListener();
         end
         
         function reset(obj)
         end
         
         function prepare(obj)
+        end
+    end
+    
+    methods(Access = protected)
+        function deleteActiveEventListener(obj)
+            if(~isempty(obj.DataReadyEventListner)&& isvalid(obj.DataReadyEventListner))
+                obj.DataReadyEventListner.Enabled=0;
+                delete(obj.DataReadyEventListner);
+            end            
         end
     end
 end
