@@ -305,8 +305,7 @@ classdef ImageScan < Experiment
             % send the current position to device. (Update the position)
             if(~exist('delayed','var') || ~isnumeric(delayed))
                 delayed=1;
-            end
-            
+            end            
             if(delayed==0)
                 exp.inv_updatePosition();
             end
@@ -330,11 +329,13 @@ classdef ImageScan < Experiment
             exp.Pos.InvertXY=exp.PositionConfig.InvertXY;
             exp.Pos.PositionTOVoltageUnits=scale;
         end
-        
     end
     
     methods (Access = private)
         function inv_updatePosition(exp,s,e)
+            if(~exp.HasBeenInitialized)
+                return;
+            end            
             % call to update the position.
             if(exp.StatusFlags.IsScanning || exp.StatusFlags.IsSettingPosition)
                 % cannot change position while scanning.
@@ -377,6 +378,9 @@ classdef ImageScan < Experiment
     % stream, status and gate methods
     methods
         function updateStreamAndGates(exp)
+            if(~exp.HasBeenInitialized)
+                return;
+            end
             % call to update the current state of the action flags
             % i.e. Stream, Laser, RF.
             if(~exp.IsStreamingReader)
@@ -389,14 +393,21 @@ classdef ImageScan < Experiment
         end
         
         function updateClockFlags(exp,sendToDevice)
+            if(~exp.HasBeenInitialized)
+                return;
+            end            
+            if(~exist('sendToDevice','var'))
+                sendToDevice=true;
+            end
             exp.Clock.SetOutput([3,5],[exp.IsLaserChanOpen,exp.IsRFChanOpen]...
-                ,sendToDevice);            
+                ,sendToDevice,exp.SystemConfig.MaxStaticLaserOnTime);
         end
     end
     
     % public methods.
     methods
         function init(exp)
+            disp('Initialzing image scanner..');
             % initializes the experiment.
             exp.resetStatusFlags();
             exp.IsWorking=true;
@@ -413,10 +424,10 @@ classdef ImageScan < Experiment
             % set is working.
             exp.IsWorking=false;
             
-            
             % update the rf channels if needed.
             exp.IsRFChanOpen=exp.IsRFChanOpen;
             exp.IsLaserChanOpen=exp.IsLaserChanOpen;
+            disp('Image scanner initialization complete.');
         end
 
         function scan(exp)
@@ -454,12 +465,33 @@ classdef ImageScan < Experiment
                 saveMatFile=true;
             end
             img=double(exp.ScanImage);
-            imgmed=median(img(:));
-            mednorm=50;
-            img(img>imgmed*mednorm)=imgmed*mednorm;
-            img(img<imgmed/mednorm)=imgmed/mednorm;
-            img=(img-min(img(:)))./(max(img(:))-min(img(:)));
-
+            medMul=20;
+            imgmax=max(img(:));
+            imgmin=min(img(:));
+            img=(img-imgmin)./(imgmax-imgmin);
+            medVal=median(img(img(:)~=0));
+            if(medVal==0)
+                medVal=mean(img(:));
+            end
+            if(medVal==0)
+                startMaxIdx=0;
+                endMinIdx=65001;
+            else
+                startMaxIdx=floor(65000*medVal/medMul);
+                endMinIdx=ceil(65000*medVal*medMul);
+                if(endMinIdx>65000)
+                    endMinIdx=65001;
+                end                
+            end
+            %startMaxIdx=0;
+            %endMinIdx=60000;
+            cmap=jet(endMinIdx-startMaxIdx);
+            startmap=zeros(startMaxIdx,3);
+            endmap=zeros(65000-endMinIdx,3);
+            endmap(:,1)=1;
+            cmap=[startmap;cmap;endmap];
+            
+            img=ind2rgb(uint16(img*65000),cmap);
             imwrite(img,fpath);
             if(saveMatFile)
                 img=exp.ScanImage;
@@ -875,6 +907,7 @@ classdef ImageScan < Experiment
             
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
             % configuring the measurement.
+            exp.ImageProperties.startOffset=0.21+exp.Pos.secondsToTimebase(1/exp.Pos.Rate);
             mbins=exp.ScanConfig.MeasureBinN;
             bint=(dwell*n^2)/mbins;
             if(bint<exp.ScanConfig.MeasureBinMinT)
@@ -949,9 +982,11 @@ classdef ImageScan < Experiment
         
         function ProcessScanResults(exp,rslts,comp)
             n=exp.ScanParameters.N;
-            toff=0.19+exp.Pos.secondsToTimebase(1/exp.Pos.Rate);
+            
             img=StreamToImageData(rslts,n,n,...
-                exp.m_curScanDwellTime,exp.ScanParameters.MultiDir,toff,exp.m_lastRawImg);
+                exp.m_curScanDwellTime,exp.ScanParameters.MultiDir,...
+                exp.ImageProperties.startOffset,exp.m_lastRawImg);
+            
             exp.m_lastRawImg=img;
             img=uint16(img);
             exp.setScanImage(img);
@@ -1057,6 +1092,25 @@ classdef ImageScan < Experiment
                     'Devices','ExpInfo','Clock','Pos','Reader'};
             end
             debugStoreCurrentStateToDisk@ExperimentCore(exp,ignoreList);
+        end
+        
+        function testReloadImage(exp)
+            %[img,updatedIndex]=StreamToI
+            tic;
+            exp.m_lastRawImg=[];
+            exp.ProcessScanResults(exp.ScanDataCollector.Results,...
+               exp.ScanDataCollector.CompleatedPercent);
+            toc;
+        end
+        
+        function testReloadReadBatch(exp,idx)
+            if(~exist('idx','var'))
+                idx=length(exp.ScanDataCollector.Results);
+            end
+            tic;
+            exp.ProcessScanResults(exp.ScanDataCollector.Results{idx},...
+               exp.ScanDataCollector.CompleatedPercent);
+            toc;
         end
     end
 end

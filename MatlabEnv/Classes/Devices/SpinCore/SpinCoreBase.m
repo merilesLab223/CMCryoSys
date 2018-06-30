@@ -23,9 +23,8 @@ classdef SpinCoreBase < Device & TimeBasedObject
         % the minimal clock cycles for each device instruction.
         MinInstructionClockTicks=5;
         
-        % long delay min time (in timebase). the time where the instruction is split into
-        % a long delay instruction. See SpinCore API for help.
-        LongDelayMinTime = 60*1000; % one minute. 
+        % Static output max time.(Function SetOutput).
+        MaxStaticOutputTime=60*60*1000;
     end
     
     % property getters
@@ -40,6 +39,11 @@ classdef SpinCoreBase < Device & TimeBasedObject
         % the offset between matlab matrix position and 
         % channel number.
         ChannelOffset   =1;  
+        
+        % the maximal time for normal instructions. If over this time the
+        % instruction will be divided into two instruction sets. The first
+        % is a long delay instructiob abd then the instruction itself.
+        MaxRegularInstructionTime = 5*1000; % 5 seconds.
     end
     
     methods (Access = protected)
@@ -123,9 +127,12 @@ classdef SpinCoreBase < Device & TimeBasedObject
             end
         end
         
-        function SetOutput(obj,c,bit,doRun)
+        function SetOutput(obj,c,bit,doRun,dur)
             if(~exist('doRun','var'))
                 doRun=1;
+            end
+            if(~exist('dur','var'))
+                dur=obj.MaxStaticOutputTime;
             end
             % sets the current output for the devices. Uses last bits
             % written to determine the current bits.
@@ -133,10 +140,8 @@ classdef SpinCoreBase < Device & TimeBasedObject
             obj.CoreAPI.Reset();
             
             obj.StartInstructions();
-            obj.InstructBinary(c,bit,obj.secondsToTimebase(1)*60*60);
+            obj.InstructBinary(c,bit,dur);
             obj.EndInstructions();
-            
-            obj.CoreAPI.Reset();
             
             if(doRun)
                 obj.CoreAPI.Start();
@@ -176,13 +181,14 @@ classdef SpinCoreBase < Device & TimeBasedObject
             flags=bi2de(bits);
             obj.m_lastInstructBits=bits;
             
-            if(dur>obj.LongDelayMinTime)
+            if(dur>obj.MaxRegularInstructionTime)
                 % case where we need a long delay.
-                ldn=floor(dur/obj.LongDelayMinTime);
-                dur=rem(dur,obj.LongDelayMinTime);
+                ldn=floor(dur/obj.MaxRegularInstructionTime);
+                dur=rem(dur,obj.MaxRegularInstructionTime);
 
                 % sending instruction.
-                obj.Instruct(flags,obj.CoreAPI.INST_LONG_DELAY,ldn,obj.LongDelayMinTime);
+                obj.Instruct(flags,obj.CoreAPI.INST_LONG_DELAY,ldn,...
+                    obj.MaxRegularInstructionTime);
                 if(dur>=minIT)
                     obj.Instruct(flags,obj.CoreAPI.INST_CONTINUE,0,dur);
                 end

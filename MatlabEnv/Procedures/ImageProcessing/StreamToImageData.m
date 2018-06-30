@@ -24,10 +24,36 @@ function [img,updatedIdxs] = StreamToImageData(rslt,coln,rown,dwellTime,multidir
         return;
     end
     
+    if(true)    
+        minT=toff;
+        totalTime=coln*rown*dwellTime;
+
+        % crop to image times;
+        validIdxs=find(ts>=minT&ts<=minT+totalTime);
+        ts=ts(validIdxs)-minT;
+        imgvector=imgvector(validIdxs);
+        %dt=ts(2)-ts(1);
+        %ts=(0:length(ts)-1)*dt;
+        [imgt,imgvector,updatedIdxs]=BinStreamByTime(ts,imgvector,dwellTime);
+        offsetIndex=floor(imgt(1)/dwellTime);
+        updatedIdxs=updatedIdxs+offsetIndex;
+        
+        if(multidir)
+            rowIndexs=floor(updatedIdxs./rown)+1;
+            evenRowIndexs=find(mod(rowIndexs,2)==0);
+            updatedIdxs(evenRowIndexs)=...
+                (rowIndexs(evenRowIndexs)-1)*rown+...
+                rown-mod(updatedIdxs(evenRowIndexs),rown);
+        end
+        
+        img(updatedIdxs)=imgvector;
+        return;
+    end
+    
     minT=ts(1)+toff;
     deltaT=(ts(end)-minT);
     totalTime=coln*rown*dwellTime;
-    maxIndex=find(ts>totalTime,1);
+    maxIndex=find(ts>=totalTime,1);
     if(isempty(maxIndex))
         maxIndex=length(ts);
     end
@@ -75,6 +101,7 @@ function [img,updatedIdxs] = StreamToImageData(rslt,coln,rown,dwellTime,multidir
         
         img(offsetidxs)=firstval;
     end
+    
     if(multidir)
         img(:,2:2:end)=img(end:-1:1,2:2:end);
     end

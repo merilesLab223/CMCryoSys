@@ -19,5 +19,15 @@ classdef TestBasicExperiment<Experiment
                 i=i+1;
             end
         end
+        
+        function [rt]=testSendError(obj)
+            error('this is an error');
+            rt=true;
+        end
+        
+        function [rt]=testSendWarning(obj)
+            warning('this is a warning');
+            rt=true;
+        end
     end
 end
