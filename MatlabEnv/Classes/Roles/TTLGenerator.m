@@ -12,7 +12,7 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
         MaxReducedLoopLength=500;
         % set to true if the TTL generator is to advance the times
         % automatically. (On call to Pulse, Up, Down ... etc).
-        AutoAdvnceTimes=true;
+        AutoAdvanceTimes=true;
     end
     
     properties(Constant)
@@ -27,7 +27,7 @@ classdef TTLGenerator < TimedDataStream & TimeBasedObject
             % Sets the output bits, for durations dur, starting at
             % time obj.curT at channels chan.            
             obj.SetBitsAt(b,obj.curT,dur,chan);
-            if(obj.AutoAdvnceTimes)
+            if(obj.AutoAdvanceTimes)
                 obj.wait(sum(dur));
             end
         end

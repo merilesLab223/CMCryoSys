@@ -11,15 +11,15 @@ namespace MatlabEditor.ConfigGenerators
 {
     public static class MatlabConfigGenerator
     {
-        public static void Configure(Scintilla editor)
+        public static void Configure(Scintilla editor, MatlabConfig config)
         {
             // Default configuration values.
             editor.Lexer = (Lexer)Matlab_LexerLang;
-            InitSyntaxColoring(editor);
-            InitNumberMargin(editor);
-            InitCodeFolding(editor);
-            InitAutoComplete(editor);
-            InitHotkeys(editor);
+            InitSyntaxColoring(editor, config);
+            InitNumberMargin(editor, config);
+            InitCodeFolding(editor, config);
+            InitAutoComplete(editor, config);
+            InitHotkeys(editor, config);
         }
 
         #region Syntax coloring
@@ -36,7 +36,7 @@ namespace MatlabEditor.ConfigGenerators
             editor.Styles[t].Bold = isbold;
         }
 
-        static private void InitSyntaxColoring(Scintilla editor)
+        static private void InitSyntaxColoring(Scintilla editor, MatlabConfig config)
         {
             editor.StyleResetDefault();
 
@@ -89,7 +89,7 @@ namespace MatlabEditor.ConfigGenerators
         /// </summary>
         private const bool CODEFOLDING_CIRCULAR = false;
 
-        static private void InitNumberMargin(Scintilla editor)
+        static private void InitNumberMargin(Scintilla editor, MatlabConfig config)
         {
 
             editor.Styles[Style.LineNumber].BackColor = IntToColor(BACK_COLOR);
@@ -121,7 +121,7 @@ namespace MatlabEditor.ConfigGenerators
             marker.SetAlpha(100);
         }
 
-        static private void InitCodeFolding(Scintilla editor)
+        static private void InitCodeFolding(Scintilla editor, MatlabConfig config)
         {
             // Enable code folding
             editor.SetProperty("fold", "1");
@@ -196,35 +196,37 @@ namespace MatlabEditor.ConfigGenerators
 
         #region AutoComplete
 
-        static void InitAutoComplete(Scintilla editor)
+        static void InitAutoComplete(Scintilla editor, MatlabConfig config)
         {
-            editor.CharAdded += editor_CharAdded1;
+            editor.CharAdded += (s,e)=>
+            {
+                // Find the word start
+                var currentPos = editor.CurrentPosition;
+                var wordStartPos = editor.WordStartPosition(currentPos, true);
+
+                // Display the autocompletion list
+                var lenEntered = currentPos - wordStartPos;
+                if (lenEntered > 0)
+                {
+                    if (!editor.AutoCActive)
+                    {
+                        editor.AutoCShow(lenEntered, config.KeyWordsString);
+                    }
+                    // "abstract as base break case catch checked continue default delegate do else event explicit extern false finally fixed for foreach goto if implicit in interface internal is lock namespace new null object operator out override params private protected public readonly ref return sealed sizeof stackalloc switch this throw true try typeof unchecked unsafe using virtual while");
+                }
+            };
         }
 
         static private void editor_CharAdded1(object sender, CharAddedEventArgs e)
         {
-            Scintilla editor = (Scintilla)sender;
-
-            // Find the word start
-            var currentPos = editor.CurrentPosition;
-            var wordStartPos = editor.WordStartPosition(currentPos, true);
-
-            // Display the autocompletion list
-            var lenEntered = currentPos - wordStartPos;
-            if (lenEntered > 0)
-            {
-                if (!editor.AutoCActive)
-                    editor.AutoCShow(lenEntered,
-                        String.Join(" ",MatlabKeyWords));
-                // "abstract as base break case catch checked continue default delegate do else event explicit extern false finally fixed for foreach goto if implicit in interface internal is lock namespace new null object operator out override params private protected public readonly ref return sealed sizeof stackalloc switch this throw true try typeof unchecked unsafe using virtual while");
-            }
+            
         }
 
         #endregion
 
         #region keys config
 
-        private static void InitHotkeys(Scintilla editor)
+        private static void InitHotkeys(Scintilla editor, MatlabConfig config)
         {
 
             // register the hotkeys with the form
@@ -277,7 +279,7 @@ namespace MatlabEditor.ConfigGenerators
             DOUBLEQUOTESTRING = 8,
         }
 
-        public static string[] MatlabKeyWords = {
+        public static List<string> MatlabKeyWords = new List<string>(new string[]{
                 "break" ,
                 "case" ,
                 "catch" ,
@@ -300,7 +302,7 @@ namespace MatlabEditor.ConfigGenerators
                 "methods",
                 "properties",
                 "while"
-        };
+        });
 
         #endregion
     }

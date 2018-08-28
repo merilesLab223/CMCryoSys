@@ -111,13 +111,14 @@ classdef ImageScan < Experiment
         
     % Devices (Getters and initializers)
     methods
-        % returns the poisitioer.
         function [dev]=get.Pos(exp)
+            % returns the poisitioer.
             dev=exp.Devices.getOrCreate('NI6321Positioner2D',...
                 'xchan','ao0','ychan','ao1','niDevID','Dev1');
         end
         
         function [dev]=get.Gate(exp)
+            % get the gate device.
             if(~isfield(exp.SystemConfig,'UseInternalClock') ||...
                     ~exp.SystemConfig.UseInternalClock)
                 dev=exp.Clock;
@@ -126,8 +127,8 @@ classdef ImageScan < Experiment
             dev=exp.Devices.getOrCreate('SpinCoreClock');
         end
         
-        % get the exp.Clock.
         function [dev]=get.Clock(exp)
+            % get the clock device.
             dev=exp.Devices.getOrCreate('SpinCoreClock');
         end
         
@@ -325,7 +326,12 @@ classdef ImageScan < Experiment
             end            
             scale=[exp.PositionConfig.UnitsToVolts*exp.PositionConfig.XToYRatio,...
                 exp.PositionConfig.UnitsToVolts];
-            
+            if(exp.PositionConfig.FlipHorizontal)
+                scale(1)=-scale(1);
+            end
+            if(exp.PositionConfig.FlipVertical)
+                scale(2)=-scale(2);
+            end      
             exp.Pos.InvertXY=exp.PositionConfig.InvertXY;
             exp.Pos.PositionTOVoltageUnits=scale;
         end
@@ -411,22 +417,25 @@ classdef ImageScan < Experiment
             % initializes the experiment.
             exp.resetStatusFlags();
             exp.IsWorking=true;
-            
-            % updating device configs.
-            exp.updatePositionConfig();
-            
+
             % marking initialized.
+            
+            % the positioner,gate and clock must be configured since it is always on.
+            % other stuff may be configured as needed.
+            exp.Gate.configure();
+            exp.Clock.configure();
+            exp.Pos.configure();
+            
+            % now initialized.
             exp.HasBeenInitialized=true;
             
-            % calling the stream (and configuring it).
-            exp.doStream(exp.StatusFlags.IsStreaming);
+            % update the rf channels if needed.
+            exp.updatePositionConfig();
+            exp.updateStreamAndGates();
             
             % set is working.
             exp.IsWorking=false;
             
-            % update the rf channels if needed.
-            exp.IsRFChanOpen=exp.IsRFChanOpen;
-            exp.IsLaserChanOpen=exp.IsLaserChanOpen;
             disp('Image scanner initialization complete.');
         end
 
@@ -752,12 +761,13 @@ classdef ImageScan < Experiment
                 delete(mf);
             end
         end
+
     end
     
     % Scan internal propeties
     properties (Access = private)
         m_curScanDwellTime=0;
-        m_activeTempFile=[];
+        m_activeFileName=[];
         m_lastRawImg=[];
     end
     
@@ -819,16 +829,18 @@ classdef ImageScan < Experiment
             %%% checking for temp file.
             if(exp.ScanConfig.SaveTempFiles)
                 % need to save temp files while scanning.
-                tmpname=['(',num2str(x0,5),',',num2str(y0,5),')+',...
+                tmpname=[datestr(now,'yymmdd.HHMMSS'),' ','(',num2str(x0,5),',',num2str(y0,5),')+',...
                     '(',num2str(w),'x',num2str(h),') ',num2str(dwell,5),'[ms]'];
-                exp.m_activeTempFile=exp.getNextScanTempFile(tmpname);
+                exp.m_activeFileName=exp.getNextScanTempFile(tmpname);
             else
                 tmpname=[];
-                exp.m_activeTempFile=[];
+                exp.m_activeFileName=[];
             end
             
             exp.updateTempFileList();
-            exp.FileInfo.DisplayedFile=tmpname;
+            % the index of the currently displayed file which is the last
+            % file.
+            exp.FileInfo.DisplayedFileIndex=0;
             
             % clock rates and configurations.
             % calculated by the position clock rate(niquist);
@@ -888,7 +900,7 @@ classdef ImageScan < Experiment
             % Some display texts.
             disp(['Scanning @(',num2str(x0),',',num2str(y0),...
                 ') +- (',num2str(w),',',num2str(h),') dt=',num2str(dwell),...
-                ' ',num2str(n),' Points']);
+                '[ms] ',num2str(n),' Points',', dx=',num2str(w/n),'[um]']);
             disp(['Measure Clock rate: ',num2str(measureClockRate)]);
             
             %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -985,16 +997,20 @@ classdef ImageScan < Experiment
             
             img=StreamToImageData(rslts,n,n,...
                 exp.m_curScanDwellTime,exp.ScanParameters.MultiDir,...
-                exp.ImageProperties.startOffset,exp.m_lastRawImg);
+                exp.ImageProperties.startOffset,exp.m_lastRawImg);           
             
             exp.m_lastRawImg=img;
             img=uint16(img);
             exp.setScanImage(img);
             exp.ScanProgress=comp;
             exp.update({'ScanProgress'});
-%             if(~isempty(exp.m_activeTempFile))
-%                 
-%             end
+            if(~isempty(exp.m_activeFileName))
+                fdata={};
+                fdata.raw=exp.m_lastRawImg;
+                fdata.img=img;
+                fdata.properties=exp.ImageProperties;
+                save(exp.m_activeFileName,'fdata');
+            end
         end
         
         function OnScanDataComplete(exp,s,e)
@@ -1034,24 +1050,28 @@ classdef ImageScan < Experiment
             % cleaning old files if needed.
             exp.cleanupTempAndLeaveN(tempdir,exp.ScanConfig.MaxNumberOfTempFiles);
             % making the new temp file name.
-            fn=[datestr(now,'yymmdd.HHMMSS'),'.',name,'.mat'];
+            fn=[tempdir,filesep,name,'.mat'];
             % make the file.
-            img=struct();
-            save([tempdir,filesep,fn],'img','-v7.3');
+            fdata=struct();
+            save(fn,'fdata','-v7.3');
         end
         
         function updateTempFileList(exp)
-%             [tempdir]=fileparts(mfilename('fullpath'));
-%             tempdir=[tempdir,filesep,'TempImages'];
-%             exp.DisplayInfo.TempFileList={};
-%             if(exist(tempdir,'dir'))
-%                 tinfo=dir(tempdir);
-%                 names=tinfo(:).name(:);
-%                 isdirs=tinfo(:).isdir(:);
-%                 exp.DisplayInfo.TempFileList=names(~isdirs);
-%             else
-%                 exp.DisplayInfo.TempFileList={};
-%             end
+            [tempdir]=fileparts(mfilename('fullpath'));
+            tempdir=[tempdir,filesep,'TempImages'];
+            exp.FileInfo.TempFileList={};
+            if(exist(tempdir,'dir'))
+                tinfo=dir(tempdir);
+                names={tinfo(:).name};
+                mtimes=[tinfo(:).datenum];
+                isdirs=[tinfo(:).isdir];
+                exp.FileInfo.TempFileList=names(~isdirs);
+            else
+                exp.FileInfo.TempFileList={};
+            end
+            
+            % finding the displayed file.
+            exp.update('FileInfo');
         end
     end
     
@@ -1062,9 +1082,9 @@ classdef ImageScan < Experiment
                 error(['Path not found or is not a folder: ',fpath]);
             end
             dinfo=dir(fpath);
-            names=dinfo(:).name;
-            mtimes=dinfo(:).datenum;
-            isdir=dinfo(:).isdir;
+            names={dinfo(:).name};
+            mtimes=[dinfo(:).datenum];
+            isdir=[dinfo(:).isdir];
             
             names=names(~isdir);
             mtimes=mtimes(~isdir);
@@ -1077,7 +1097,7 @@ classdef ImageScan < Experiment
                     delete([fpath,filesep,names{i}]);
                 end
             end
-        end        
+        end
     end
 
     % cleanup and debug
@@ -1095,7 +1115,6 @@ classdef ImageScan < Experiment
         end
         
         function testReloadImage(exp)
-            %[img,updatedIndex]=StreamToI
             tic;
             exp.m_lastRawImg=[];
             exp.ProcessScanResults(exp.ScanDataCollector.Results,...
@@ -1111,6 +1130,13 @@ classdef ImageScan < Experiment
             exp.ProcessScanResults(exp.ScanDataCollector.Results{idx},...
                exp.ScanDataCollector.CompleatedPercent);
             toc;
+        end
+
+        function testUpdateTempFileList(exp)
+            if(isfield(exp.FileInfo,'DisplayedFile'))
+                exp.FileInfo=rmfield(exp.FileInfo,'DisplayedFile');
+            end
+            exp.updateTempFileList();
         end
     end
 end

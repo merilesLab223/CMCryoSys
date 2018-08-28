@@ -49,6 +49,13 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="ConfigGenerators\MatlabConfigGenerator.cs" />
+    <Compile Include="MatlabConfig.cs" />
+    <Compile Include="MatlabParamTable.cs">
+      <SubType>UserControl</SubType>
+    </Compile>
+    <Compile Include="MatlabParamTable.Designer.cs">
+      <DependentUpon>MatlabParamTable.cs</DependentUpon>
+    </Compile>
     <Compile Include="MEditor.cs">
       <SubType>UserControl</SubType>
     </Compile>
@@ -58,6 +65,9 @@
     <None Include="packages.config" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="MatlabParamTable.resx">
+      <DependentUpon>MatlabParamTable.cs</DependentUpon>
+    </EmbeddedResource>
     <EmbeddedResource Include="MEditor.resx">
       <DependentUpon>MEditor.cs</DependentUpon>
     </EmbeddedResource>

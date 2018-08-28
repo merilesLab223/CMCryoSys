@@ -90,6 +90,12 @@ classdef NI6321Core < Device & TimeBasedObject
             if(~isvalid(obj))
                 return;
             end
+            
+            % nothing to do if not configure.
+            if(~obj.isConfigured)
+                return;
+            end
+            
             s=obj.niSession;
             if(isempty(s))
                 return;

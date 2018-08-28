@@ -66,7 +66,7 @@ namespace MatlabEditor
         /// <summary>
         /// Returns the text value for the control.
         /// </summary>
-        public string Value { get { return m_editor.Text; } set { m_editor.Text = value; } }
+        public string Text { get { return m_editor.Text; } set { m_editor.Text = value; } }
 
         /// <summary>
         /// The editor;
@@ -82,7 +82,7 @@ namespace MatlabEditor
             switch(cnfg)
             {
                 case Configuration.Matlab:
-                    ConfigGenerators.MatlabConfigGenerator.Configure(m_editor);
+                    ConfigGenerators.MatlabConfigGenerator.Configure(m_editor, new MatlabConfig());
                     break;
             }
         }

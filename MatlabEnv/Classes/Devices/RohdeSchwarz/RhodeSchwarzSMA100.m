@@ -15,7 +15,7 @@ classdef RhodeSchwarzSMA100 < RohdeSchwarzBase
     
     % core tcp properties.
     properties(SetAccess = protected)
-        IP='192.168.236.102';
+        IP='192.168.236.4';
         Port=5025; % raw port.
     end
     

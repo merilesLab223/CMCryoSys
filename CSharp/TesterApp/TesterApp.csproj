@@ -83,6 +83,10 @@
     <None Include="App.config" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\MatlabEditor\MatlabEditor\MatlabEditor.csproj">
+      <Project>{13135b54-6c75-4a33-aeb0-36caa9301659}</Project>
+      <Name>MatlabEditor</Name>
+    </ProjectReference>
     <ProjectReference Include="..\SequenceEditor\SequenceEditor\SequenceEditor.csproj">
       <Project>{86e3014a-f61a-4b57-9e7f-7b81967c9d0f}</Project>
       <Name>SequenceEditor</Name>

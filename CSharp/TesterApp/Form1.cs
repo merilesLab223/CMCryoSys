@@ -15,6 +15,12 @@ namespace TesterApp
         public Form1()
         {
             InitializeComponent();
+            sqEditor.SequenceSelected += SqEditor_SequenceSelected;
+        }
+
+        private void SqEditor_SequenceSelected(object sender, EventArgs e)
+        {
+            EditSelectedSequence();
         }
 
         private void btnTestSaveSequence_Click(object sender, EventArgs e)
@@ -42,6 +48,15 @@ namespace TesterApp
                 }
                 sq.InternalSequences.Add(intern);
             }
+        }
+
+        void EditSelectedSequence()
+        {
+
+        }
+
+        private void label1_Click(object sender, EventArgs e)
+        {
 
         }
     }

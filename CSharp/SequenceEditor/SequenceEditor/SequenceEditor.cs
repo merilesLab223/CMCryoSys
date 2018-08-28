@@ -15,19 +15,58 @@ namespace SequenceEditor
         public SequenceEditor()
         {
             InitializeComponent();
+
+            tvMain.AfterSelect += TvMain_AfterSelect;
+        }
+
+        private void TvMain_AfterSelect(object sender, TreeViewEventArgs e)
+        {
+            // Called when the node element was selected.
+            if (e.Node is SequenceNode && SequenceSelected != null)
+            {
+                SequenceSelected(this, e);
+            }
         }
 
         #region Parmeters
 
+        /// <summary>
+        /// The sequence json object for this editor.
+        /// </summary>
         public JsonSequence Sequence { get; private set; } = null;
 
+        /// <summary>
+        /// The paramters root.
+        /// </summary>
         public TreeNode NodeParameters { get { return this.tvMain.Nodes["Parameters"]; } }
+
+        /// <summary>
+        /// The sequence root.
+        /// </summary>
         public TreeNode NodeSequence { get { return this.tvMain.Nodes["Sequence"]; } }
+
+        /// <summary>
+        /// The currrent selected sequence node (if selected).
+        /// </summary>
+        public SequenceNode Selected { get { return tvMain.SelectedNode as SequenceNode; } }
+
+        #endregion
+
+        #region events
+
+        /// <summary>
+        /// Called when a diffrent sequence is selected. 
+        /// </summary>
+        public event EventHandler SequenceSelected;
 
         #endregion
 
         #region methods
 
+        /// <summary>
+        /// Called to load a sequence ito the editor.
+        /// </summary>
+        /// <param name="sq"></param>
         public void LoadSequence(JsonSequence sq)
         {
             Sequence = sq;

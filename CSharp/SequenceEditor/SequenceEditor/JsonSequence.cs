@@ -43,18 +43,6 @@ namespace SequenceEditor
         [JsonProperty]
         public string Code { get; set; }
 
-        /// <summary>
-        /// The code for the sequence start
-        /// </summary>
-        [JsonProperty]
-        public string SequenceEndCode { get; set; }
-
-        /// <summary>
-        /// The code for the sequence start.
-        /// </summary>
-        [JsonProperty]
-        public string SequenceStartCode { get; set; }
-
         #endregion
     }
 }
